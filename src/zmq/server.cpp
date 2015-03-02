@@ -3,15 +3,18 @@
 #include <string>
 #include <iostream>
 #include <queue>
+#include <google/protobuf/text_format.h>
 #include "server.hpp"
 #include "spdlog.h"
 #include "cgopt.pb.h"
 
-using namespace std;
-
 auto console = spdlog::stdout_logger_mt("console");
 
-void serve_pubsub(string host, int port);
+void debug_request(cgopt_request request);
+void debug_response(cgopt_response response);
+void serve_pubsub(std::string host, int port);
+cgopt_response process_req(cgopt_request request,
+		std::queue<cgopt_response> & worker_queue, std::queue<cgopt_response> & server_queue);
 
 int main(int argc, char *argv[]) {
 
@@ -20,64 +23,98 @@ int main(int argc, char *argv[]) {
 	serve_pubsub("*", 5555);
 }
 
-void serve_pubsub(string host, int port) {
+void serve_pubsub(std::string host, int port) {
 	zmqpp::context context;
-	zmqpp::socket_type type = zmqpp::socket_type::pull;
-	zmqpp::socket socket (context, type);
-    console->info() << "Binding to "<<host<<":"<<port; 
-	socket.bind(("tcp://"+host+":"+to_string(port)).c_str());
+	zmqpp::socket_type type = zmqpp::socket_type::rep;
+	zmqpp::socket socket(context, type);
+	console->info() << "Binding to " << host << ":" << port;
+	socket.bind(("tcp://" + host + ":" + std::to_string(port)).c_str());
 
-	queue<cgopt_response> worker_queue;
-	queue<cgopt_response> server_queue;
+	std::queue<cgopt_response> worker_queue;
+	std::queue<cgopt_response> server_queue;
 
 	size_t processed = 0;
 	auto start = std::chrono::high_resolution_clock::now();
 
 	while (true) {
-		zmqpp::message message;
+		zmqpp::message reqmessage;
 		cgopt_request request;
 
 		//  Wait for next request from client
-		socket.receive(message);
-		string serialized_req;
+		socket.receive(reqmessage);
+		std::string serialized_req;
 
-		message >> serialized_req;
+		reqmessage >> serialized_req;
+		request.ParseFromString(serialized_req);
 
-		console->info() << "Parsing successful: "<<request.ParseFromString(serialized_req);
-		console->info() << request.SerializeAsString();
+		debug_request(request);
 
-		if(request.type() == request.GET_WORK){
-			if(worker_queue.empty()){
+		//get response
+		cgopt_response response = process_req(request, worker_queue,
+				server_queue);
 
-			} else {
-				zmqpp::message respmessage;
-				respmessage << worker_queue.front().SerializeAsString();
-				socket.send(respmessage);
-				worker_queue.pop();
-			}
-		} else if (request.type() == request.PUT_WORK) {
-			cgopt_response response;
-			response.set_type(response.WORK);
-			response.set_id(request.id());
-			for(int i=0; i<request.data_size();++i){
-				response.set_data(i, request.data(i));
-			}
-			worker_queue.push(response);
-		} else {
-			console->warn() << "Request message type not recognized";
-		}
+		debug_response(response);
+
+		//and send it
+		zmqpp::message respmessage;
+		respmessage << response.SerializeAsString();
+		socket.send(respmessage);
+
 		++processed;
-		if(processed % 10001 == 0){
-			auto now = chrono::high_resolution_clock::now();
-			cout << "Processed " << processed << " messages in "
-						  << std::chrono::duration_cast<std::chrono::milliseconds>(now - start).count()
-						  << " milliseconds\n";
+		if (processed % 10001 == 0) {
+			auto now = std::chrono::high_resolution_clock::now();
+			std::cout << "Processed " << processed << " messages in "
+					<< std::chrono::duration_cast<std::chrono::milliseconds>(
+							now - start).count() << " milliseconds\n";
 			start = std::chrono::high_resolution_clock::now();
 		}
 
 	}
 }
 
-void process_pp_msg(zmq::message_t &req, zmq::message_t &res) {
+cgopt_response process_req(cgopt_request request,
+		std::queue<cgopt_response> &  worker_queue,
+		std::queue<cgopt_response> &  server_queue) {
 
+	cgopt_response response;
+	response.set_id(request.id());
+
+	if (request.type() == request.GET_WORK) {
+		response.set_type(response.WORK);
+		if (worker_queue.empty()) {
+			response.set_error(NO_WORK);
+		} else {
+			response.CopyFrom(worker_queue.front());
+			worker_queue.pop();
+			console->info() << "POP Queue size="<<worker_queue.size();
+		}
+	} else if (request.type() == request.PUT_WORK) {
+		cgopt_response queue_response;
+		queue_response.set_type(response.WORK);
+		queue_response.set_id(request.id());
+		queue_response.mutable_data()->CopyFrom(request.data());
+//		memcpy(queue_response.mutable_data()->mutable_data(),
+//				response.data().data(), sizeof(double)*response.data_size());
+		worker_queue.push(queue_response);
+		console->info() << "PUSH Queue size="<<worker_queue.size();
+		response.set_type(response.OK);
+	} else {
+		console->warn() << "Request message type not recognized";
+		response.set_error(BAD_REQUEST);
+	}
+	return response;
+}
+
+
+void debug_request(cgopt_request request) {
+	std::string s;
+	google::protobuf::TextFormat::PrintToString(request, &s);
+	console->info() << "Request " << s;
+}
+
+void debug_response(cgopt_response response) {
+
+	std::string s;
+	google::protobuf::TextFormat::PrintToString(response, &s);
+	console->info() << "Response " << s;
 }

@@ -1,4 +1,3 @@
-#include <string>
 
 #ifndef CGOPT_MSGQUEUE_SERVER_HPP_
 #define CGOPT_MSGQUEUE_SERVER_HPP_
