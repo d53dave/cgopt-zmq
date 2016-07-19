@@ -37,9 +37,7 @@ ExternalProject_Add(
 )
 
 set(SOURCE_FILES
-        src/server.cpp
-        src/server.hpp
-    README.md)
+    src/CSAOptMessageQueue.cpp src/CSAOptMessageQueue.h src/main.cpp)
 
 add_executable(csaopt_zmq ${SOURCE_FILES} ${CAPNP_SRCS})
 target_link_libraries(csaopt_zmq zmq zmqpp)
