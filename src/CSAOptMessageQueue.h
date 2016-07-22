@@ -6,17 +6,23 @@
 
 #import <queue>
 #import <map>
-#import <tidings/tiding.capnp.h>
+#import <tidings/tidings.capnp.h>
 #import <spdlog/spdlog.h>
+#import <zmqpp/zmqpp.hpp>
 
 namespace CSAOpt {
 
     class MessageQueue {
     public:
-        MessageQueue(int port);
+        explicit MessageQueue(int tidingsPort, int plumbingsPort);
     private:
+        void startMessageHandling(zmqpp::socket &tidingSocket, zmqpp::socket &plumbingSocket);
+        void runTidingsRepReqLoop(std::string host, unsigned int port);
+        void runPlumbingRepReqLoop(std::string host, unsigned int port);
+
         std::shared_ptr<spdlog::logger> logger;
-        std::queue<Tiding> work;
+
+        volatile bool run;
     };
 
 }
