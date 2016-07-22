@@ -22,6 +22,7 @@ if(ZMQPP_FOUND)
     list(APPEND ${PROJECT_NAME}_EXTERNAL_LIBRARIES "${ZMQPP_LIBRARIES}")
 endif()
 
+file(MAKE_DIRECTORY ${CMAKE_CURRENT_SOURCE_DIR}/include/tidings)
 set(CAPNPC_OUTPUT_DIR ${CMAKE_CURRENT_SOURCE_DIR}/include/tidings)
 
 include(ExternalProject)
