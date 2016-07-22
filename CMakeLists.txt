@@ -22,6 +22,9 @@ if(ZMQPP_FOUND)
     list(APPEND ${PROJECT_NAME}_EXTERNAL_LIBRARIES "${ZMQPP_LIBRARIES}")
 endif()
 
+include(FindCapnProto)
+find_package(CapnProto REQUIRED)
+
 file(MAKE_DIRECTORY ${CMAKE_CURRENT_SOURCE_DIR}/include/tidings)
 set(CAPNPC_OUTPUT_DIR ${CMAKE_CURRENT_SOURCE_DIR}/include/tidings)
 
@@ -40,5 +43,7 @@ ExternalProject_Add(
 set(SOURCE_FILES
     src/CSAOptMessageQueue.cpp src/CSAOptMessageQueue.h src/main.cpp)
 
+file(GLOB CAPNP_FILES "include/tidings/*.capnp.c++")
+
 add_executable(csaopt_zmq ${SOURCE_FILES} ${CAPNP_SRCS})
-target_link_libraries(csaopt_zmq zmq zmqpp)
+target_link_libraries(csaopt_zmq zmq zmqpp ${CAPNP_LIBRARIES})
