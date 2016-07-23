@@ -16,20 +16,7 @@ CSAOpt::MessageQueue::MessageQueue(int tidingsPort, int plumbingPort) {
 
     std::string host{"*"};
 
-
-    zmqpp::context context2;
-    zmqpp::socket_type type = zmqpp::socket_type::rep;
-
-
-    zmqpp::socket socket2(context2, type);
-
-
-    socket2.bind(("tcp://" + host + ":" + std::to_string(plumbingPort)).c_str());
-
-
     this->logger->info("Messagequeue started on with ports {} and {}", tidingsPort, plumbingPort);
-
-    MessageQueue::run = true;
 
     std::thread plumbingRepReqThread([=] { runPlumbingRepReqLoop(host, plumbingPort); } );
     std::thread tidingsRepReqThread([=] { runTidingsRepReqLoop(host, tidingsPort); } );
