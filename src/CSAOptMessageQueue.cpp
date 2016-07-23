@@ -15,6 +15,7 @@ CSAOpt::MessageQueue::MessageQueue(int tidingsPort, int plumbingPort) {
     spdlog::register_logger(this->logger);
 
     std::string host{"*"};
+    this->run = true;
 
     this->logger->info("Messagequeue started on with ports {} and {}", tidingsPort, plumbingPort);
 
@@ -23,6 +24,8 @@ CSAOpt::MessageQueue::MessageQueue(int tidingsPort, int plumbingPort) {
 
     tidingsRepReqThread.join();
     plumbingRepReqThread.join();
+
+    this->logger->info("Threads exited. Terminating.");
 };
 
 void CSAOpt::MessageQueue::runTidingsRepReqLoop(std::string host, unsigned int port) {
@@ -37,14 +40,14 @@ void CSAOpt::MessageQueue::runTidingsRepReqLoop(std::string host, unsigned int p
     socket.bind(addr.c_str());
 
     while(this->run){
-        zmqpp::message reqmessage;
-
-        socket.receive(reqmessage);
-
         const std::FILE* tmpf = std::tmpfile();
-        reqmessage >> tmpf;
+        this->readMessageToTmpFile(socket, tmpf);
 
         ::capnp::PackedFdMessageReader capnpMessage(fileno(const_cast<std::FILE*>(tmpf)));
+
+        Tidings::Reader tidings = capnpMessage.getRoot<Tidings>();
+
+        this->logger->info("Received tiding with Id {}", tidings.getId().cStr());
     }
 }
 
@@ -60,13 +63,20 @@ void CSAOpt::MessageQueue::runPlumbingRepReqLoop(std::string host, unsigned int 
     socket.bind(addr.c_str());
 
     while(this->run){
-        zmqpp::message reqmessage;
-
-        socket.receive(reqmessage);
-
         const std::FILE* tmpf = std::tmpfile();
-        reqmessage >> tmpf;
+        this->readMessageToTmpFile(socket, tmpf);
 
         ::capnp::PackedFdMessageReader capnpMessage(fileno(const_cast<std::FILE*>(tmpf)));
+
+        Plumbing::Reader tidings = capnpMessage.getRoot<Plumbing>();
+
+        this->logger->info("Received plumbing with Id {}", tidings.getId().cStr());
     }
+}
+
+void CSAOpt::MessageQueue::readMessageToTmpFile(zmqpp::socket& socket, const std::FILE *file) const{
+    zmqpp::message reqmessage;
+
+    socket.receive(reqmessage);
+    reqmessage >> file;
 }

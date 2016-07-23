@@ -9,6 +9,7 @@
 #import <tidings/tidings.capnp.h>
 #import <spdlog/spdlog.h>
 #import <zmqpp/zmqpp.hpp>
+#include <capnp/serialize-packed.h>
 
 namespace CSAOpt {
 
@@ -19,6 +20,8 @@ namespace CSAOpt {
         void startMessageHandling(zmqpp::socket &tidingSocket, zmqpp::socket &plumbingSocket);
         void runTidingsRepReqLoop(std::string host, unsigned int port);
         void runPlumbingRepReqLoop(std::string host, unsigned int port);
+        void readMessageToTmpFile(zmqpp::socket& socket, const std::FILE* file) const;
+//        ::capnp::PackedFdMessageReader& getMessage(zmqpp::socket &socket);
 
         std::shared_ptr<spdlog::logger> logger;
 
