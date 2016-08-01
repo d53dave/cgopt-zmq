@@ -6,6 +6,19 @@
 #include <tidings/tidings.capnp.h>
 #include <tidings/plumbing.capnp.h>
 #include <thread>
+#include <future>
+#include <sstream>
+#include "kj/KjStringPipe.h"
+
+void write_to_the_pipe(int fd, std::string data)
+{
+    FILE *stream;
+    stream = fdopen(fd, "w");
+    for(char& c : data) {
+        fprintf(stream, "%c", c);
+    }
+    fclose (stream);
+}
 
 CSAOpt::MessageQueue::MessageQueue(int tidingsPort, int plumbingPort) {
     std::vector<spdlog::sink_ptr> sinks;
@@ -19,13 +32,10 @@ CSAOpt::MessageQueue::MessageQueue(int tidingsPort, int plumbingPort) {
 
     this->logger->info("Messagequeue started on with ports {} and {}", tidingsPort, plumbingPort);
 
-    std::thread plumbingRepReqThread([=] { runPlumbingRepReqLoop(host, plumbingPort); } );
-    std::thread tidingsRepReqThread([=] { runTidingsRepReqLoop(host, tidingsPort); } );
+    this->plumbingRepReqThread = std::thread([=] { runPlumbingRepReqLoop(host, plumbingPort); } );
+    this->tidingsRepReqThread = std::thread([=] { runTidingsRepReqLoop(host, tidingsPort); } );
 
-    tidingsRepReqThread.join();
-    plumbingRepReqThread.join();
-
-    this->logger->info("Threads exited. Terminating.");
+    this->logger->info("Started threads {} and {}", this->plumbingRepReqThread.get_id(), this->tidingsRepReqThread.get_id());
 };
 
 void CSAOpt::MessageQueue::runTidingsRepReqLoop(std::string host, unsigned int port) {
@@ -63,15 +73,58 @@ void CSAOpt::MessageQueue::runPlumbingRepReqLoop(std::string host, unsigned int 
     socket.bind(addr.c_str());
 
     while(this->run){
-        const std::FILE* tmpf = std::tmpfile();
-        this->readMessageToTmpFile(socket, tmpf);
+        logger->info("Plumbing rep/req loop pass");
+        zmqpp::message req;
+        socket.receive(req);
 
-        ::capnp::PackedFdMessageReader capnpMessage(fileno(const_cast<std::FILE*>(tmpf)));
+        logger->info("Plumbing rep/req loop recv message");
+        std::string strBuf;
+        req >> strBuf;
 
-        Plumbing::Reader tidings = capnpMessage.getRoot<Plumbing>();
+        kj::std::StringPipe pipe(strBuf);
+        ::capnp::PackedMessageReader recvMessage(pipe);
 
-        this->logger->info("Received plumbing with Id {}", tidings.getId().cStr());
+        logger->info("Plumbing rep/req loop message deserialized");
+
+        Plumbing::Reader recvPlumbing = recvMessage.getRoot<Plumbing>();
+
+        this->logger->info("Received plumbing with Id {}", recvPlumbing.getId().cStr());
+
+        ::capnp::MallocMessageBuilder message;
+        Plumbing::Builder plumbing = message.initRoot<Plumbing>();
+        std::time_t t = std::time(0);
+        plumbing.setId(recvMessage.getRoot<Plumbing>().getId().cStr());
+        plumbing.setTimestamp(t);
+        plumbing.setSender("zmq");
+        plumbing.setType(Plumbing::Type::ACK);
+
+        pipe.clear();
+        writePackedMessage(pipe, message);
+
+        zmqpp::message resp;
+        resp << pipe.getData();
+
+        socket.send(resp);
     }
+}
+
+CSAOpt::MessageQueue::~MessageQueue(){
+    this->logger->info("Destructor for MessageQueue");
+    this->run = false;
+
+    std::future<void> future = std::async ([=]{
+        this->logger->info("Destructor waiting for threads to join");
+        this->plumbingRepReqThread.join();
+        this->tidingsRepReqThread.join();
+    });
+
+    std::chrono::seconds myTimeout(2);
+    if(future.wait_for(myTimeout) == std::future_status::timeout){
+        // TODO: Lol, this is obviously bad.
+        std::terminate();
+    }
+
+    this->logger->info("Destructor for MessageQueue done.");
 }
 
 void CSAOpt::MessageQueue::readMessageToTmpFile(zmqpp::socket& socket, const std::FILE *file) const{

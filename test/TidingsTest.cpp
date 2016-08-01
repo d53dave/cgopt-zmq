@@ -6,7 +6,6 @@
 #include "TestConfig.h"
 #include "../src/CSAOptMessageQueue.h"
 #include <string>
-#include <ext/stdio_filebuf.h>
 
 SCENARIO("Registering as a worker should return OK", "") {
 
@@ -67,8 +66,6 @@ SCENARIO("Registering as a worker should return OK", "") {
                 req >> serialized_res;
 
                 std::ofstream file("/tmp/capnp.bin");
-
-
 
             }
         }

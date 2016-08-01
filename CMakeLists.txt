@@ -1,6 +1,7 @@
 cmake_minimum_required(VERSION 3.5)
 project(csaopt_zmq)
 
+#set(CMAKE_CXX_COMPILER /usr/local/bin/gcc-4.9)
 set(CMAKE_CXX_STANDARD 11) # adds -std=c++11
 set(CMAKE_CXX_STANDARD_REQUIRED ON)
 set(CMAKE_MODULE_PATH ${CMAKE_MODULE_PATH} ${CMAKE_SOURCE_DIR}/CMakeModules)
@@ -41,9 +42,23 @@ ExternalProject_Add(
 )
 
 set(SOURCE_FILES
-    src/CSAOptMessageQueue.cpp src/CSAOptMessageQueue.h src/main.cpp)
+    src/CSAOptMessageQueue.cpp src/CSAOptMessageQueue.h src/kj/KjStringPipe.h)
 
 file(GLOB CAPNP_FILES "include/tidings/*.capnp.c++")
 
-add_executable(csaopt_zmq ${SOURCE_FILES} ${CAPNP_SRCS})
+add_executable(csaopt_zmq src/main.cpp ${SOURCE_FILES} ${CAPNP_SRCS})
 target_link_libraries(csaopt_zmq zmq zmqpp ${CAPNP_LIBRARIES})
+
+enable_testing()
+file(GLOB TEST_FILES "test/*.cpp")
+
+#Run through each source
+foreach(testFile ${TEST_FILES})
+    #Extract the filename without an extension (NAME_WE)
+    get_filename_component(testName ${testFile} NAME_WE)
+
+    #Add compile target
+    add_executable(${testName} ${testFile} ${SOURCE_FILES} ${CAPNP_SRCS})
+    target_link_libraries(${testName} zmq zmqpp ${CAPNP_LIBRARIES})
+    add_test(NAME ${testName} COMMAND ${testName} )
+endforeach(testFile)

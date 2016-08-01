@@ -1,5 +1,7 @@
 #include "CSAOptMessageQueue.h"
-#include <string>
+#include <tidings/plumbing.capnp.h>
+#include <sstream>
+#include "KJ/KjStringPipe.h"
 
 int main(int argc, char* argv[]) {
     int port = 11551;

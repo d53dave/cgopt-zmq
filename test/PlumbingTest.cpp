@@ -5,10 +5,9 @@
 #include <tidings/plumbing.capnp.h>
 #include "TestConfig.h"
 #include "../src/CSAOptMessageQueue.h"
-#include <string>
-#include <ext/stdio_filebuf.h>
+#include "../src/kj/KjStringPipe.h"
 
-SCENARIO("Registering as a worker should return OK", "") {
+SCENARIO("Workers want to register and unregister with the Messagequeue", "") {
 
     int tidingsPort = 12345;
     int plumbingsPort = 12378;
@@ -29,6 +28,7 @@ SCENARIO("Registering as a worker should return OK", "") {
         const std::string endpoint = "tcp://localhost:" + std::to_string(plumbingsPort);
 
         socket.connect(endpoint);
+        std::cout << "Socket connected to"<< endpoint << std::endl;
 
         WHEN("A worker wants to join"){
 
@@ -39,37 +39,31 @@ SCENARIO("Registering as a worker should return OK", "") {
             plumbing.setSender("worker1");
             plumbing.setType(Plumbing::Type::REGISTER);
 
-            std::FILE* tmpf = std::tmpfile();
-            int fd = fileno(tmpf);
-            writePackedMessageToFd(fd, message);
+            kj::std::StringPipe pipe;
 
-            const size_t N=1024;
-            size_t read = N;
-            std::string total;
-            while (read >= N) {
-                std::vector<char> buf[N];
-                fread((void *)&buf[0], 1, N, tmpf);
-                if (read) {
-                    total.append(buf->begin(), buf->end());
-                }
-            }
+            writePackedMessage(pipe, message);
 
-            req << total;
-
+            req << pipe.getData();
+            std::cout << "Data from pipe: "<< pipe.getData() << std::endl;
             socket.send(req);
 
             THEN("The server responds with OK"){
-                req.reset_read_cursor();
-                socket.receive(req);
+                zmqpp::message resp;
+                socket.receive(resp);
 
-                std::string serialized_res;
+                std::string recvdata;
 
-                req >> serialized_res;
+                resp >> recvdata;
 
-                std::ofstream file("/tmp/capnp.bin");
+                kj::std::StringPipe newPipe(recvdata);
 
+                ::capnp::PackedMessageReader recvMessage(newPipe);
 
+                Plumbing::Reader recvPlumbing = recvMessage.getRoot<Plumbing>();
+//                std::cout << "Round trip id="<<recvPlumbing.getId().cStr() << " and type "<< recvPlumbing.getType() std::endl;
 
+                REQUIRE(strcmp(plumbing.getId().cStr(), recvPlumbing.getId().cStr()) == 0);
+                REQUIRE(recvPlumbing.getType() == Plumbing::Type::ACK);
             }
         }
 
