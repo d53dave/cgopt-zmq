@@ -8,7 +8,7 @@
 #include <spdlog/sinks/base_sink.h>
 #include <spdlog/details/null_mutex.h>
 #include <spdlog/details/file_helper.h>
-#include <spdlog/details/format.h>
+#include <spdlog/fmt/fmt.h>
 
 #include <algorithm>
 #include <chrono>
@@ -16,6 +16,7 @@
 #include <ctime>
 #include <mutex>
 #include <string>
+#include <cerrno>
 
 namespace spdlog
 {
@@ -119,12 +120,12 @@ private:
             {
                 if (details::os::remove(target) != 0)
                 {
-                    throw spdlog_ex("rotating_file_sink: failed removing " + filename_to_str(target));
+                    throw spdlog_ex("rotating_file_sink: failed removing " + filename_to_str(target), errno);
                 }
             }
             if (details::file_helper::file_exists(src) && details::os::rename(src, target))
             {
-                throw spdlog_ex("rotating_file_sink: failed renaming " + filename_to_str(src) + " to " + filename_to_str(target));
+                throw spdlog_ex("rotating_file_sink: failed renaming " + filename_to_str(src) + " to " + filename_to_str(target), errno);
             }
         }
         _file_helper.reopen(true);
@@ -214,8 +215,7 @@ protected:
 private:
     std::chrono::system_clock::time_point _next_rotation_tp()
     {
-        using namespace std::chrono;
-        auto now = system_clock::now();
+        auto now = std::chrono::system_clock::now();
         time_t tnow = std::chrono::system_clock::to_time_t(now);
         tm date = spdlog::details::os::localtime(tnow);
         date.tm_hour = _rotation_h;
@@ -225,7 +225,7 @@ private:
         if (rotation_time > now)
             return rotation_time;
         else
-            return system_clock::time_point(rotation_time + hours(24));
+            return std::chrono::system_clock::time_point(rotation_time + std::chrono::hours(24));
     }
 
     filename_t _base_filename;
