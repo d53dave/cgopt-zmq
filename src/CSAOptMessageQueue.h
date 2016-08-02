@@ -10,8 +10,12 @@
 #include <spdlog/spdlog.h>
 #include <zmqpp/zmqpp.hpp>
 #include <capnp/serialize-packed.h>
+#include <set>
+#include <tidings/plumbing.capnp.h>
 
 namespace CSAOpt {
+
+    typedef std::string workerId;
 
     class MessageQueue {
     public:
@@ -20,7 +24,6 @@ namespace CSAOpt {
     private:
         void runTidingsRepReqLoop(std::string host, unsigned int port);
         void runPlumbingRepReqLoop(std::string host, unsigned int port);
-        void readMessageToTmpFile(zmqpp::socket& socket, const std::FILE* file) const;
 
         std::thread plumbingRepReqThread;
         std::thread tidingsRepReqThread;
@@ -28,6 +31,9 @@ namespace CSAOpt {
         std::shared_ptr<spdlog::logger> logger;
 
         volatile bool run;
+
+        void handleRegister(Plumbing::Builder& builder, std::set<workerId>& set, Plumbing::Reader& reader);
+        void handleUnregister(Plumbing::Builder& builder, std::set<workerId>& set, Plumbing::Reader& reader);
     };
 
 }

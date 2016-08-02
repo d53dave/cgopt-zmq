@@ -8,22 +8,14 @@
 #include <thread>
 #include <future>
 #include <sstream>
+#include <set>
 #include "kj/KjStringPipe.h"
-
-void write_to_the_pipe(int fd, std::string data)
-{
-    FILE *stream;
-    stream = fdopen(fd, "w");
-    for(char& c : data) {
-        fprintf(stream, "%c", c);
-    }
-    fclose (stream);
-}
+#include <iterator>
 
 CSAOpt::MessageQueue::MessageQueue(int tidingsPort, int plumbingPort) {
     std::vector<spdlog::sink_ptr> sinks;
-    sinks.push_back(std::make_shared<spdlog::sinks::stdout_sink_st>());
-    sinks.push_back(std::make_shared<spdlog::sinks::rotating_file_sink_st>("csaopt_msqqueue", "log", 1024 * 1024 * 5, 10));
+    sinks.push_back(std::make_shared<spdlog::sinks::stdout_sink_mt>());
+    sinks.push_back(std::make_shared<spdlog::sinks::rotating_file_sink_mt>("csaopt_msqqueue", "log", 1024 * 1024 * 5, 10));
     this->logger = std::make_shared<spdlog::logger>("csaopt-zmq-logger", begin(sinks), end(sinks));
     spdlog::register_logger(this->logger);
 
@@ -35,7 +27,7 @@ CSAOpt::MessageQueue::MessageQueue(int tidingsPort, int plumbingPort) {
     this->plumbingRepReqThread = std::thread([=] { runPlumbingRepReqLoop(host, plumbingPort); } );
     this->tidingsRepReqThread = std::thread([=] { runTidingsRepReqLoop(host, tidingsPort); } );
 
-    this->logger->info("Started threads {} and {}", this->plumbingRepReqThread.get_id(), this->tidingsRepReqThread.get_id());
+    this->logger->info("Started threads REQ/REP threads");
 };
 
 void CSAOpt::MessageQueue::runTidingsRepReqLoop(std::string host, unsigned int port) {
@@ -49,20 +41,20 @@ void CSAOpt::MessageQueue::runTidingsRepReqLoop(std::string host, unsigned int p
     this->logger->info("Binding socket on {}", addr);
     socket.bind(addr.c_str());
 
+    zmqpp::poller poller;
+    poller.add(socket);
+
     while(this->run){
-        const std::FILE* tmpf = std::tmpfile();
-        this->readMessageToTmpFile(socket, tmpf);
+        if(poller.poll(100)) {
 
-        ::capnp::PackedFdMessageReader capnpMessage(fileno(const_cast<std::FILE*>(tmpf)));
-
-        Tidings::Reader tidings = capnpMessage.getRoot<Tidings>();
-
-        this->logger->info("Received tiding with Id {}", tidings.getId().cStr());
+        }
     }
 }
 
 void CSAOpt::MessageQueue::runPlumbingRepReqLoop(std::string host, unsigned int port) {
     this->logger->info("Entering Plumbing REP/REQ loop");
+
+    std::set<workerId> workers;
 
     zmqpp::context context;
     zmqpp::socket_type type = zmqpp::socket_type::rep;
@@ -72,39 +64,88 @@ void CSAOpt::MessageQueue::runPlumbingRepReqLoop(std::string host, unsigned int 
     this->logger->info("Binding socket on {}", addr);
     socket.bind(addr.c_str());
 
+    zmqpp::poller poller;
+    poller.add(socket);
+
     while(this->run){
-        logger->info("Plumbing rep/req loop pass");
-        zmqpp::message req;
-        socket.receive(req);
+        if(poller.poll(100)) {
+            logger->info("Plumbing rep/req loop pass");
+            zmqpp::message req;
+            socket.receive(req);
 
-        logger->info("Plumbing rep/req loop recv message");
-        std::string strBuf;
-        req >> strBuf;
+            logger->info("Plumbing rep/req loop recv message");
+            std::string strBuf;
+            req >> strBuf;
 
-        kj::std::StringPipe pipe(strBuf);
-        ::capnp::PackedMessageReader recvMessage(pipe);
+            kj::std::StringPipe pipe(strBuf);
+            ::capnp::PackedMessageReader recvMessage(pipe);
 
-        logger->info("Plumbing rep/req loop message deserialized");
+            logger->info("Plumbing rep/req loop message deserialized");
 
-        Plumbing::Reader recvPlumbing = recvMessage.getRoot<Plumbing>();
+            Plumbing::Reader recvPlumbing = recvMessage.getRoot<Plumbing>();
 
-        this->logger->info("Received plumbing with Id {}", recvPlumbing.getId().cStr());
+            this->logger->info("Received plumbing with Id {}", recvPlumbing.getId().cStr());
 
-        ::capnp::MallocMessageBuilder message;
-        Plumbing::Builder plumbing = message.initRoot<Plumbing>();
-        std::time_t t = std::time(0);
-        plumbing.setId(recvMessage.getRoot<Plumbing>().getId().cStr());
-        plumbing.setTimestamp(t);
-        plumbing.setSender("zmq");
-        plumbing.setType(Plumbing::Type::ACK);
 
-        pipe.clear();
-        writePackedMessage(pipe, message);
+            ::capnp::MallocMessageBuilder message;
+            Plumbing::Builder plumbing = message.initRoot<Plumbing>();
 
-        zmqpp::message resp;
-        resp << pipe.getData();
+            switch (recvPlumbing.getType()) {
+                case Plumbing::Type::REGISTER:
+                    handleRegister(plumbing, workers, recvPlumbing);
+                    break;
+                case Plumbing::Type::UNREGISTER:
+                    handleUnregister(plumbing, workers, recvPlumbing);
+                    break;
+                case Plumbing::Type::HEARTBEAT:
+                    break;
+                case Plumbing::Type::STATS:
+                    break;
+                default:
+                    break;
+            }
 
-        socket.send(resp);
+            pipe.clear();
+            writePackedMessage(pipe, message);
+
+            logger->info("Sending response for id {}", plumbing.getId().cStr());
+
+            zmqpp::message resp;
+            resp << pipe.getData();
+
+            socket.send(resp);
+        }
+    }
+}
+void CSAOpt::MessageQueue::handleUnregister(Plumbing::Builder& response, std::set<workerId>& set, Plumbing::Reader& recvmessage) {
+    response.setId(recvmessage.getId());
+    response.setTimestamp(time_t(0));
+    std::set<std::string>::iterator it = set.find(std::string{recvmessage.getSender().cStr()});
+    if(it == set.end()){
+        response.setType(Plumbing::Type::ERROR);
+        response.setMessage("Worker '"+std::string{recvmessage.getSender().cStr()}+"' is not registered");
+    } else {
+        set.erase(it);
+        response.setType(Plumbing::Type::ACK);
+    }
+}
+
+
+void CSAOpt::MessageQueue::handleRegister(Plumbing::Builder& response, std::set<workerId>& set, Plumbing::Reader& recvmessage) {
+    response.setId(recvmessage.getId());
+    response.setTimestamp(time_t(0));
+    if(set.count(recvmessage.getSender().cStr()) > 0){
+        response.setType(Plumbing::Type::ERROR);
+        response.setMessage("Worker '"+std::string{recvmessage.getSender().cStr()}+"' is already registered");
+    } else {
+        auto res = set.emplace(recvmessage.getSender().cStr());
+        // pair of iterator, bool
+        if(res.second){
+            response.setType(Plumbing::Type::ACK);
+        } else {
+            response.setType(Plumbing::Type::ERROR);
+            response.setMessage("Could not add to worker list, sorry");
+        }
     }
 }
 
@@ -125,11 +166,5 @@ CSAOpt::MessageQueue::~MessageQueue(){
     }
 
     this->logger->info("Destructor for MessageQueue done.");
-}
-
-void CSAOpt::MessageQueue::readMessageToTmpFile(zmqpp::socket& socket, const std::FILE *file) const{
-    zmqpp::message reqmessage;
-
-    socket.receive(reqmessage);
-    reqmessage >> file;
+    spdlog::drop_all();
 }
