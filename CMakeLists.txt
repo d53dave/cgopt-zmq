@@ -47,7 +47,7 @@ set(SOURCE_FILES
 file(GLOB CAPNP_FILES "include/tidings/*.capnp.c++")
 
 add_executable(csaopt_zmq src/main.cpp ${SOURCE_FILES} ${CAPNP_SRCS})
-target_link_libraries(csaopt_zmq zmq zmqpp ${CAPNP_LIBRARIES})
+target_link_libraries(csaopt_zmq ${ZMQ_LIBRARIES} ${ZMQPP_LIBRARIES} ${CAPNP_LIBRARIES})
 
 enable_testing()
 file(GLOB TEST_FILES "test/*.cpp")
