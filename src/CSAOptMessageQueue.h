@@ -16,6 +16,8 @@
 namespace CSAOpt {
 
     typedef std::string workerId;
+    typedef std::chrono::system_clock::time_point heartbeat;
+    typedef std::map<workerId, heartbeat> memberMap;
 
     class MessageQueue {
     public:
@@ -30,10 +32,16 @@ namespace CSAOpt {
 
         std::shared_ptr<spdlog::logger> logger;
 
+        std::chrono::milliseconds heartbeatTimeout;
+
         volatile bool run;
 
-        void handleRegister(Plumbing::Builder& builder, std::set<workerId>& set, Plumbing::Reader& reader);
-        void handleUnregister(Plumbing::Builder& builder, std::set<workerId>& set, Plumbing::Reader& reader);
+        void handleRegister(Plumbing::Builder& builder, Plumbing::Reader& reader, memberMap& members);
+        void handleUnregister(Plumbing::Builder& builder, Plumbing::Reader& reader, memberMap& members);
+        void handleHeartbeat(Plumbing::Builder& builder, Plumbing::Reader& reader, memberMap& members);
+        void handleStats(Plumbing::Builder& builder, memberMap& members);
+
+        void handleWorkerTimeouts(memberMap map);
     };
 
 }

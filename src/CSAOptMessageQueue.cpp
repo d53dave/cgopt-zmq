@@ -1,16 +1,7 @@
 #include "CSAOptMessageQueue.h"
-#include <stdio.h>
-#include <capnp/message.h>
-#include <capnp/serialize-packed.h>
-#include <iostream>
-#include <tidings/tidings.capnp.h>
-#include <tidings/plumbing.capnp.h>
-#include <thread>
 #include <future>
 #include <sstream>
-#include <set>
 #include "kj/KjStringPipe.h"
-#include <iterator>
 
 CSAOpt::MessageQueue::MessageQueue(int tidingsPort, int plumbingPort) {
     std::vector<spdlog::sink_ptr> sinks;
@@ -46,7 +37,7 @@ void CSAOpt::MessageQueue::runTidingsRepReqLoop(std::string host, unsigned int p
 
     while(this->run){
         if(poller.poll(100)) {
-
+            ; // Just handle messages
         }
     }
 }
@@ -54,7 +45,7 @@ void CSAOpt::MessageQueue::runTidingsRepReqLoop(std::string host, unsigned int p
 void CSAOpt::MessageQueue::runPlumbingRepReqLoop(std::string host, unsigned int port) {
     this->logger->info("Entering Plumbing REP/REQ loop");
 
-    std::set<workerId> workers;
+    memberMap members;
 
     zmqpp::context context;
     zmqpp::socket_type type = zmqpp::socket_type::rep;
@@ -80,7 +71,7 @@ void CSAOpt::MessageQueue::runPlumbingRepReqLoop(std::string host, unsigned int 
             kj::std::StringPipe pipe(strBuf);
             ::capnp::PackedMessageReader recvMessage(pipe);
 
-            logger->info("Plumbing rep/req loop message deserialized");
+            this->logger->info("Plumbing rep/req loop message deserialized");
 
             Plumbing::Reader recvPlumbing = recvMessage.getRoot<Plumbing>();
 
@@ -92,16 +83,19 @@ void CSAOpt::MessageQueue::runPlumbingRepReqLoop(std::string host, unsigned int 
 
             switch (recvPlumbing.getType()) {
                 case Plumbing::Type::REGISTER:
-                    handleRegister(plumbing, workers, recvPlumbing);
+                    handleRegister(plumbing, recvPlumbing, members);
                     break;
                 case Plumbing::Type::UNREGISTER:
-                    handleUnregister(plumbing, workers, recvPlumbing);
+                    handleUnregister(plumbing, recvPlumbing, members);
                     break;
                 case Plumbing::Type::HEARTBEAT:
+                    handleHeartbeat(plumbing, recvPlumbing, members);
                     break;
                 case Plumbing::Type::STATS:
+                    handleStats(plumbing, members);
                     break;
                 default:
+//                    this->logger->error("Unrecognized Message type: {}", recvPlumbing.getType());
                     break;
             }
 
@@ -114,31 +108,37 @@ void CSAOpt::MessageQueue::runPlumbingRepReqLoop(std::string host, unsigned int 
             resp << pipe.getData();
 
             socket.send(resp);
+
+            handleWorkerTimeouts(members);
         }
     }
 }
-void CSAOpt::MessageQueue::handleUnregister(Plumbing::Builder& response, std::set<workerId>& set, Plumbing::Reader& recvmessage) {
+void CSAOpt::MessageQueue::handleUnregister(Plumbing::Builder& response,
+                                            Plumbing::Reader& recvmessage,
+                                            memberMap& members) {
     response.setId(recvmessage.getId());
     response.setTimestamp(time_t(0));
-    std::set<std::string>::iterator it = set.find(std::string{recvmessage.getSender().cStr()});
-    if(it == set.end()){
+    auto it = members.find(std::string{recvmessage.getSender().cStr()});
+    if(it == members.end()){
         response.setType(Plumbing::Type::ERROR);
         response.setMessage("Worker '"+std::string{recvmessage.getSender().cStr()}+"' is not registered");
     } else {
-        set.erase(it);
+        members.erase(it);
         response.setType(Plumbing::Type::ACK);
     }
 }
 
 
-void CSAOpt::MessageQueue::handleRegister(Plumbing::Builder& response, std::set<workerId>& set, Plumbing::Reader& recvmessage) {
+void CSAOpt::MessageQueue::handleRegister(Plumbing::Builder& response,
+                                          Plumbing::Reader& recvmessage,
+                                          memberMap& members) {
     response.setId(recvmessage.getId());
     response.setTimestamp(time_t(0));
-    if(set.count(recvmessage.getSender().cStr()) > 0){
+    if(members.count(recvmessage.getSender().cStr()) > 0){
         response.setType(Plumbing::Type::ERROR);
         response.setMessage("Worker '"+std::string{recvmessage.getSender().cStr()}+"' is already registered");
     } else {
-        auto res = set.emplace(recvmessage.getSender().cStr());
+        auto res = members.emplace(recvmessage.getSender().cStr(), std::chrono::system_clock::now());
         // pair of iterator, bool
         if(res.second){
             response.setType(Plumbing::Type::ACK);
@@ -149,22 +149,50 @@ void CSAOpt::MessageQueue::handleRegister(Plumbing::Builder& response, std::set<
     }
 }
 
+void CSAOpt::MessageQueue::handleHeartbeat(Plumbing::Builder &response,
+                                           Plumbing::Reader& recvmessage,
+                                           memberMap& members) {
+    if(members.count(recvmessage.getSender().cStr()) == 0){
+        response.setType(Plumbing::Type::ERROR);
+        response.setMessage("Worker '"+std::string{recvmessage.getSender().cStr()}+"' is not registered");
+    } else {
+
+    }
+}
+
+void CSAOpt::MessageQueue::handleWorkerTimeouts(CSAOpt::memberMap members) {
+    auto now = std::chrono::system_clock::now();
+    for(auto it = members.cbegin(); it != members.cend(); ) {
+        auto heartbeat = it->second;
+        auto msElapsedSinceHB = std::chrono::duration_cast<std::chrono::milliseconds>(now - heartbeat);
+        if(msElapsedSinceHB > this->heartbeatTimeout) {
+            members.erase(it);
+        }
+        it++;
+    }
+}
+
+void CSAOpt::MessageQueue::handleStats(Plumbing::Builder &builder, memberMap &members) {
+    ;
+}
+
 CSAOpt::MessageQueue::~MessageQueue(){
-    this->logger->info("Destructor for MessageQueue");
+    this->logger->debug("Destructor for MessageQueue");
     this->run = false;
 
     std::future<void> future = std::async ([=]{
-        this->logger->info("Destructor waiting for threads to join");
+        this->logger->debug("Destructor waiting for threads to join");
         this->plumbingRepReqThread.join();
         this->tidingsRepReqThread.join();
     });
 
     std::chrono::seconds myTimeout(2);
     if(future.wait_for(myTimeout) == std::future_status::timeout){
-        // TODO: Lol, this is obviously bad.
-        std::terminate();
+        this->logger->warn("Destructor for MessageQueue timed out waiting for threads to join.");
+    } else {
+        this->logger->debug("Exiting MessageQueue.");
     }
 
-    this->logger->info("Destructor for MessageQueue done.");
     spdlog::drop_all();
 }
+
