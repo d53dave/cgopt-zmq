@@ -10,7 +10,6 @@
 #include <spdlog/spdlog.h>
 #include <zmqpp/zmqpp.hpp>
 #include <capnp/serialize-packed.h>
-#include <set>
 #include <tidings/plumbing.capnp.h>
 
 namespace CSAOpt {
@@ -18,6 +17,19 @@ namespace CSAOpt {
     typedef std::string workerId;
     typedef std::chrono::system_clock::time_point heartbeat;
     typedef std::map<workerId, heartbeat> memberMap;
+
+    typedef struct {
+        long long totalVirtualMemory;
+        long long usedVirtualMemory;
+        long long usedVirtualMemoryUsedByMe;
+        long long totalPhysicalMemory;
+        long long usedPhysicalMemoryUsedByMe;
+        double usedCPU;
+        double usedCPUbyMe;
+        long queueSizeTidings;
+        long queueSizePlumbing;
+        long numWorkers;
+    } Stats;
 
     class MessageQueue {
     public:
@@ -42,6 +54,8 @@ namespace CSAOpt {
         void handleStats(Plumbing::Builder& builder, memberMap& members);
 
         void handleWorkerTimeouts(memberMap map);
+
+        void computeStats()
     };
 
 }
