@@ -70,7 +70,7 @@ namespace kj {
             }
 
             size_t tryRead(void* buffer, size_t minBytes, size_t maxBytes) override {
-//                KJ_ASSERT(maxBytes <= data.size() - readPos, "Overran end of stream.");
+                assert((maxBytes <= data.size() - readPos) && "Overran end of stream.");
                 size_t amount = kj::min(maxBytes, kj::max(minBytes, preferredReadSize));
                 memcpy(buffer, data.data() + readPos, amount);
                 readPos += amount;
@@ -78,7 +78,7 @@ namespace kj {
             }
 
             void skip(size_t bytes) override {
-//                KJ_ASSERT(bytes <= data.size() - readPos, "Overran end of stream.");
+                assert((bytes <= data.size() - readPos) && "Overran end of stream.");
                 readPos += bytes;
             }
 
