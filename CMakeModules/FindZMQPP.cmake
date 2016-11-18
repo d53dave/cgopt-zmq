@@ -1,26 +1,23 @@
 # This will look for the ZMQPP headers and libraries and make
 # appropriate variables available to CMake.
 
-find_path(
-        ZMQPP_INCLUDE_DIRS
+include(LibFindMacros)
+
+# Use pkg-config to get hints about paths
+libfind_pkg_check_modules(zmqpp_PKGCONF libzmqpp)
+
+# Include dir
+find_path(ZMQPP_INCLUDE_DIR
         NAMES zmqpp/zmqpp.hpp
-        HINTS ${ZMQPP_INCLUDE_DIRS}
-)
+        PATHS ${zmqpp_PKGCONF_INCLUDE_DIRS})
 
-find_library(
-        ZMQPP_LIBRARIES
+# Finally the library itself
+find_library(ZMQPP_LIBRARY
         NAMES zmqpp
-        HINTS ${ZMQPP_LIBRARY_DIRS}
-)
+        PATHS )
 
-include(FindPackageHandleStandardArgs)
-FIND_PACKAGE_HANDLE_STANDARD_ARGS(
-        ZMQPP
-        DEFAULT_MSG
-        ZMQPP_LIBRARIES
-        ZMQPP_INCLUDE_DIRS
-)
-
-if(ZMQPP_FOUND)
-    mark_as_advanced(ZMQPP_LIBRARIES ZMQPP_INCLUDE_DIRS)
-endif()
+# Set the include dir variables and the libraries and let libfind_process do the rest.
+# NOTE: Singular variables for this library, plural for libraries this this lib depends on.
+set(zmqpp_PROCESS_INCLUDES zmqpp_INCLUDE_DIR )
+set(zmqpp_PROCESS_LIBS zmqpp_LIBRARY )
+libfind_process(zmqpp)
