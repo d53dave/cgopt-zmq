@@ -1,4 +1,4 @@
-cmake_minimum_required(VERSION 3.5)
+cmake_minimum_required(VERSION 3.2)
 project(csaopt_zmq)
 
 #set(CMAKE_CXX_COMPILER /usr/local/bin/gcc-4.9)
