@@ -31,11 +31,11 @@ namespace CSAOpt {
         this->statsThread = std::thread([=] { computeStatsLoop(); });
 
         this->logger->info("Started threads REQ/REP threads");
-
-//        this->plumbingRepReqThread.detach();
-//        this->tidingsRepReqThread.detach();
-//        this->statsThread.detach();
     };
+
+    void MessageQueue::logDebug() {
+        this->logger->set_level(spdlog::level::debug);
+    }
 
     void MessageQueue::runTidingsRepReqLoop(std::string host, unsigned int port) {
         this->logger->info("Entering Tiding REP/REQ loop");
@@ -98,6 +98,7 @@ namespace CSAOpt {
                 saveResponseTime(std::chrono::duration_cast<std::chrono::microseconds>(end - begin).count());
             }
         }
+        this->finished = true;
     }
 
     void MessageQueue::runPlumbingRepReqLoop(std::string host, unsigned int port) {
@@ -177,6 +178,7 @@ namespace CSAOpt {
                 handleWorkerTimeouts(members);
             }
         }
+        this->finished = true;
     }
 
     static size_t lastResponseTimeIdx = 0;
@@ -272,7 +274,7 @@ namespace CSAOpt {
         this->logger->flush();
         this->run = false;
 
-        std::future<void> future = std::async([=] {
+        std::future<void> future = std::async(std::launch::async, [=] {
             this->logger->debug("Destructor waiting for threads to join");
             this->logger->flush();
             this->plumbingRepReqThread.join();
@@ -280,7 +282,7 @@ namespace CSAOpt {
             this->statsThread.join();
         });
 
-        std::chrono::seconds myTimeout(2);
+        std::chrono::seconds myTimeout(5);
         if (future.wait_for(myTimeout) == std::future_status::timeout) {
             this->logger->warn("Destructor for MessageQueue timed out waiting for threads to join.");
             this->logger->flush();
@@ -301,6 +303,7 @@ namespace CSAOpt {
             std::lock_guard<std::mutex> guard(mutex);
             this->currentStats = stats;
         }
+        this->finished = true;
     }
 
     Stats &MessageQueue::getCurrentStats() {

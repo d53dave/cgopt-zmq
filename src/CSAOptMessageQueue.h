@@ -24,11 +24,9 @@ namespace CSAOpt {
     class MessageQueue {
     public:
         explicit MessageQueue(unsigned int tidingsPort, unsigned int plumbingsPort);
-        void abort() {
-            this->logger->info("Abort called on MessageQueue");
-            this->run = false;
-        }
+        void logDebug();
         ~MessageQueue();
+        volatile bool finished = false;
     private:
         static constexpr size_t responseTimeAvgCount = 3;
         long durationsMicrosecs[responseTimeAvgCount] = {0};
@@ -53,6 +51,7 @@ namespace CSAOpt {
         std::chrono::milliseconds heartbeatTimeout;
 
         volatile bool run;
+
 
         void handleRegister(Plumbing::Builder& builder, Plumbing::Reader& reader, memberMap& members);
         void handleUnregister(Plumbing::Builder& builder, Plumbing::Reader& reader, memberMap& members);
