@@ -3,15 +3,13 @@
 #include "CSAOptMessageQueue.h"
 #include "kj/KjStringPipe.h"
 
-#ifdef __linux__
-#include "sys/types.h"
-#include "sys/sysinfo.h"
-#endif
-
 
 namespace CSAOpt {
 
-    MessageQueue::MessageQueue(int tidingsPort, int plumbingPort) {
+    std::mutex mutex;
+
+
+    MessageQueue::MessageQueue(unsigned int tidingsPort, unsigned int plumbingPort) {
         std::vector<spdlog::sink_ptr> sinks;
 
         sinks.push_back(std::make_shared<spdlog::sinks::stdout_sink_mt>());
@@ -19,16 +17,24 @@ namespace CSAOpt {
                 std::make_shared<spdlog::sinks::rotating_file_sink_mt>("csaopt_msqqueue", "log", 1024 * 1024 * 5, 10));
         this->logger = std::make_shared<spdlog::logger>("csaopt-zmq-logger", begin(sinks), end(sinks));
         spdlog::register_logger(this->logger);
+        this->logger->set_level(spdlog::level::debug);
 
         std::string host{"*"};
         this->run = true;
+
+        this->statsGatherer = StatsGatherer();
 
         this->logger->info("Messagequeue started on with ports {} and {}", tidingsPort, plumbingPort);
 
         this->plumbingRepReqThread = std::thread([=] { runPlumbingRepReqLoop(host, plumbingPort); });
         this->tidingsRepReqThread = std::thread([=] { runTidingsRepReqLoop(host, tidingsPort); });
+        this->statsThread = std::thread([=] { computeStatsLoop(); });
 
         this->logger->info("Started threads REQ/REP threads");
+
+//        this->plumbingRepReqThread.detach();
+//        this->tidingsRepReqThread.detach();
+//        this->statsThread.detach();
     };
 
     void MessageQueue::runTidingsRepReqLoop(std::string host, unsigned int port) {
@@ -36,18 +42,60 @@ namespace CSAOpt {
 
         zmqpp::context context;
         zmqpp::socket_type type = zmqpp::socket_type::rep;
-        zmqpp::socket socket(context, type);
+        zmqpp::socket socket{
+                context,
+                type
+        };
 
-        std::string addr = "tcp://" + host + ":" + std::to_string(port);
-        this->logger->info("Binding socket on {}", addr);
-        socket.bind(addr.c_str());
+        const zmqpp::endpoint_t endpoint = fmt::format("tcp://{}:{}", host, port);
+        this->logger->info("Binding socket on {}", endpoint);
+        socket.bind(endpoint);
 
         zmqpp::poller poller;
         poller.add(socket);
 
         while (this->run) {
             if (poller.poll(100)) { ; // Just handle messages
+                logger->info("Tidings rep/req loop pass");
+                zmqpp::message req;
+                socket.receive(req);
+                auto begin = std::chrono::high_resolution_clock::now();
 
+                logger->info("Tidings rep/req loop recv message");
+                std::string strBuf;
+                req >> strBuf;
+
+                kj::std::StringPipe pipe(strBuf);
+                ::capnp::PackedMessageReader recvMessage(pipe);
+
+                this->logger->info("Tidings rep/req loop message deserialized");
+
+                Tidings::Reader recvTiding = recvMessage.getRoot<Tidings>();
+
+                this->logger->info("Received tiding with Id {}", recvTiding.getId().cStr());
+
+
+                ::capnp::MallocMessageBuilder message;
+                Tidings::Builder tiding = message.initRoot<Tidings>();
+
+                tiding.setId(recvTiding.getId());
+                tiding.setTimestamp(time_t(0));
+
+                // TODO: handle actual message
+
+                pipe.clear();
+                writePackedMessage(pipe, message);
+
+                logger->info("Sending response for tiding with id {}", tiding.getId().cStr());
+
+                zmqpp::message resp;
+                resp << pipe.getData().c_str();
+
+
+                socket.send(resp);
+
+                auto end = std::chrono::high_resolution_clock::now();
+                saveResponseTime(std::chrono::duration_cast<std::chrono::microseconds>(end - begin).count());
             }
         }
     }
@@ -58,12 +106,13 @@ namespace CSAOpt {
         memberMap members;
 
         zmqpp::context context;
-        zmqpp::socket_type type = zmqpp::socket_type::rep;
-        zmqpp::socket socket(context, type);
 
-        std::string addr = "tcp://" + host + ":" + std::to_string(port);
-        this->logger->info("Binding socket on {}", addr);
-        socket.bind(addr.c_str());
+        const zmqpp::socket_type type = zmqpp::socket_type::rep;
+        zmqpp::socket socket{context, type};
+
+        const zmqpp::endpoint_t endpoint = fmt::format("tcp://{}:{}", host, port);
+        this->logger->info("Binding socket on {}", endpoint.c_str());
+        socket.bind(endpoint);
 
         zmqpp::poller poller;
         poller.add(socket);
@@ -73,6 +122,7 @@ namespace CSAOpt {
                 logger->info("Plumbing rep/req loop pass");
                 zmqpp::message req;
                 socket.receive(req);
+                auto begin = std::chrono::high_resolution_clock::now();
 
                 logger->info("Plumbing rep/req loop recv message");
                 std::string strBuf;
@@ -115,15 +165,26 @@ namespace CSAOpt {
                 pipe.clear();
                 writePackedMessage(pipe, message);
 
-                logger->info("Sending response for id {}", plumbing.getId().cStr());
+                logger->info("Sending response for plumbing with id {}", plumbing.getId().cStr());
 
                 zmqpp::message resp;
-                resp << pipe.getData();
+                resp << pipe.getData().c_str();
 
                 socket.send(resp);
+                auto end = std::chrono::high_resolution_clock::now();
+                saveResponseTime(std::chrono::duration_cast<std::chrono::microseconds>(end - begin).count());
 
                 handleWorkerTimeouts(members);
             }
+        }
+    }
+
+    static size_t lastResponseTimeIdx = 0;
+
+    void MessageQueue::saveResponseTime(long microsecs) {
+        this->durationsMicrosecs[lastResponseTimeIdx++] = microsecs;
+        if (lastResponseTimeIdx > this->responseTimeAvgCount) {
+            lastResponseTimeIdx = 0;
         }
     }
 
@@ -178,145 +239,73 @@ namespace CSAOpt {
             auto heartbeat = it->second;
             auto msElapsedSinceHB = std::chrono::duration_cast<std::chrono::milliseconds>(now - heartbeat);
             if (msElapsedSinceHB > this->heartbeatTimeout) {
+                logger->warn("Worker {} has timed out ({}ms > {}ms)", it->first, msElapsedSinceHB.count(),
+                             this->heartbeatTimeout.count());
                 members.erase(it);
             }
             it++;
         }
     }
 
+    void MessageQueue::handleStats(Plumbing::Builder &response, memberMap const &members) {
+        Stats &stats = this->getCurrentStats();
 
-    void getTotalVirtualMemory(struct sysinfo& memInfo, Stats& stats) {
-#ifdef __linux__
-        sysinfo (&memInfo);
-        long long totalVirtualMem = memInfo.totalram;
-        totalVirtualMem += memInfo.totalswap;
-        totalVirtualMem *= memInfo.mem_unit;
-        stats.totalVirtualMemory = totalVirtualMem;
-#endif
-    }
+        stats.numWorkers = members.size();
+        stats.queueSizeTidings = this->workQueue.size();
 
-    void getTotalPhysicalMemory(struct sysinfo& memInfo, Stats& stats) {
-#ifdef __linux__
-
-        long long totalPhysMem = memInfo.totalram;
-        totalPhysMem *= memInfo.mem_unit;
-        stats.totalPhysicalMemory = totalPhysMem;
-#endif
-    }
-
-    void getUsedVirtualMemory(struct sysinfo& memInfo, Stats& stats) {
-#ifdef __linux__
-        long long virtualMemUsed = memInfo.totalram - memInfo.freeram;
-        //Add other values in next statement to avoid int overflow on right hand side...
-        virtualMemUsed += memInfo.totalswap - memInfo.freeswap;
-        virtualMemUsed *= memInfo.mem_unit;
-        stats.usedVirtualMemory = virtualMemUsed;
-#endif
-    }
-
-    void getUsedPhysicalMemory(struct sysinfo& memInfo, Stats& stats) {
-#ifdef __linux__
-        long long physMemUsed = memInfo.totalram - memInfo.freeram;
-        physMemUsed *= memInfo.mem_unit;
-#endif
-    }
-
-    void getOwnUsedVirtualMemory(struct sysinfo& memInfo, Stats& stats) {
-#ifdef __linux__
-        FILE* file = fopen("/proc/self/status", "r");
-        int result = -1;
-        char line[128];
-
-        while (fgets(line, 128, file) != NULL){
-            if (strncmp(line, "VmSize:", 7) == 0){
-                int i = strlen(line);
-                const char* p = line;
-                while (*p <'0' || *p > '9') {
-                    p++;
-                }
-                line[i-3] = '\0';
-                result = atoi(p);
-                break;
+        double avgTime = 0;
+        for (auto &&val : this->durationsMicrosecs) {
+            if (val > 0) {
+                double v = val;
+                avgTime += v / 2;
             }
         }
-        fclose(file);
-        stats.usedVirtualMemoryUsedByMe = result;
-#endif
-    }
-
-    void getOwnUsedVirtualMemory2(struct sysinfo& memInfo, Stats& stats) {
-#ifdef __linux__
-        FILE* file = fopen("/proc/self/status", "r");
-        int result = -1;
-        char line[128];
-
-        while (fgets(line, 128, file) != NULL){
-            if (strncmp(line, "VmSize:", 7) == 0){
-                int i = strlen(line);
-                const char* p = line;
-                while (*p <'0' || *p > '9') {
-                    p++;
-                }
-                line[i-3] = '\0';
-                result = atoi(p);
-                break;
-            }
-        }
-        fclose(file);
-        stats.usedVirtualMemoryUsedByMe = result;
-#endif
-    }
-
-    void getCPULoad(struct sysinfo& memInfo, Stats& stats) {
-#ifdef __linux__
-        stats.usedCPU = result;
-        stats.usedCPUbyMe = myCPU;
-#endif
-    }
-
-    void MessageQueue::handleStats(Plumbing::Builder &response, memberMap &members) {
-
-        Stats stats{-1, -1, -1, -1, -1, -1.0, -1.0, -1, -1};
-
-#ifdef __linux__
-        struct sysinfo memInfo;
-        sysinfo (&memInfo);
-
-        getTotalVirtualMemory(memInfo, stats);
-        getTotalPhysicalMemory(memInfo, stats);
-        getUsedPhysicalMemory(memInfo, stats);
-        getUsedVirtualMemory(memInfo, stats)
-        getOwnUsedVirtualMemory(memInfo, stats);
-        getUsedVirtualMemory(memInfo, stats);
-        getCPU(stats);
-        resolveQueueSizes(stats);
-        resolveWorkerCount(stats);
-#endif
 
         // Send results
         response.setType(Plumbing::Type::ACK);
-        response.setStats();
+//TODO:        response.setStats();
 
     }
 
     MessageQueue::~MessageQueue() {
         this->logger->debug("Destructor for MessageQueue");
+        this->logger->flush();
         this->run = false;
 
         std::future<void> future = std::async([=] {
             this->logger->debug("Destructor waiting for threads to join");
+            this->logger->flush();
             this->plumbingRepReqThread.join();
             this->tidingsRepReqThread.join();
+            this->statsThread.join();
         });
 
         std::chrono::seconds myTimeout(2);
         if (future.wait_for(myTimeout) == std::future_status::timeout) {
             this->logger->warn("Destructor for MessageQueue timed out waiting for threads to join.");
+            this->logger->flush();
         } else {
             this->logger->debug("Exiting MessageQueue.");
+            this->logger->flush();
         }
 
         spdlog::drop_all();
+    }
+
+
+    void MessageQueue::computeStatsLoop() {
+        std::chrono::milliseconds sleepPeriod(500);
+        while (this->run) {
+            std::this_thread::sleep_for(sleepPeriod);
+            Stats stats = this->statsGatherer.computeStats();
+            std::lock_guard<std::mutex> guard(mutex);
+            this->currentStats = stats;
+        }
+    }
+
+    Stats &MessageQueue::getCurrentStats() {
+        std::lock_guard<std::mutex> guard(mutex);  // This now locked your mutex
+        return this->currentStats;
     }
 
 }

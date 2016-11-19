@@ -8,9 +8,11 @@
 #include <map>
 #include <tidings/tidings.capnp.h>
 #include <spdlog/spdlog.h>
+#include <zmq.hpp>
 #include <zmqpp/zmqpp.hpp>
 #include <capnp/serialize-packed.h>
 #include <tidings/plumbing.capnp.h>
+#include "StatsGatherer.h"
 
 namespace CSAOpt {
 
@@ -18,31 +20,35 @@ namespace CSAOpt {
     typedef std::chrono::system_clock::time_point heartbeat;
     typedef std::map<workerId, heartbeat> memberMap;
 
-    typedef struct {
-        long long totalVirtualMemory;
-        long long usedVirtualMemory;
-        long long usedVirtualMemoryUsedByMe;
-        long long totalPhysicalMemory;
-        long long usedPhysicalMemoryUsedByMe;
-        double usedCPU;
-        double usedCPUbyMe;
-        long queueSizeTidings;
-        long queueSizePlumbing;
-        long numWorkers;
-    } Stats;
 
     class MessageQueue {
     public:
-        explicit MessageQueue(int tidingsPort, int plumbingsPort);
+        explicit MessageQueue(unsigned int tidingsPort, unsigned int plumbingsPort);
+        void abort() {
+            this->logger->info("Abort called on MessageQueue");
+            this->run = false;
+        }
         ~MessageQueue();
     private:
+        static constexpr size_t responseTimeAvgCount = 3;
+        long durationsMicrosecs[responseTimeAvgCount] = {0};
+        void saveResponseTime(long d);
+
+        std::queue<std::string> workQueue;
+        std::map<std::string, std::string> results;
+
         void runTidingsRepReqLoop(std::string host, unsigned int port);
         void runPlumbingRepReqLoop(std::string host, unsigned int port);
 
         std::thread plumbingRepReqThread;
         std::thread tidingsRepReqThread;
+        std::thread statsThread;
 
         std::shared_ptr<spdlog::logger> logger;
+
+        StatsGatherer statsGatherer;
+        Stats currentStats;
+        Stats& getCurrentStats();
 
         std::chrono::milliseconds heartbeatTimeout;
 
@@ -51,13 +57,10 @@ namespace CSAOpt {
         void handleRegister(Plumbing::Builder& builder, Plumbing::Reader& reader, memberMap& members);
         void handleUnregister(Plumbing::Builder& builder, Plumbing::Reader& reader, memberMap& members);
         void handleHeartbeat(Plumbing::Builder& builder, Plumbing::Reader& reader, memberMap& members);
-        void handleStats(Plumbing::Builder& builder, memberMap& members);
+        void handleStats(Plumbing::Builder& builder, memberMap const& members);
 
         void handleWorkerTimeouts(memberMap map);
 
-        void computeStats()
+        void computeStatsLoop();
     };
-
 }
-
-
