@@ -1,7 +1,19 @@
 #include "CSAOptMessageQueue.h"
-#include <tidings/plumbing.capnp.h>
 #include <sstream>
-#include "KJ/KjStringPipe.h"
+#include <csignal>
+
+namespace {
+    volatile std::sig_atomic_t gSignalStatus;
+}
+
+CSAOpt::MessageQueue *msgQueue;
+
+void signal_handler(int signal) {
+    gSignalStatus = signal;
+//    if(msgQueue) {
+//        msgQueue->abort();
+//    }
+}
 
 int main(int argc, char* argv[]) {
     int port = 11551;
@@ -11,5 +23,14 @@ int main(int argc, char* argv[]) {
         port2 = std::stoi(std::string{argv[2]});
     }
 
-    CSAOpt::MessageQueue messageQueue(port, port2);
+    std::signal(SIGINT, signal_handler);
+
+    msgQueue = new CSAOpt::MessageQueue(port, port2);
+
+    while(gSignalStatus == 0) {
+        std::this_thread::sleep_for(std::chrono::seconds(1));
+    }
+    std::cout << "Deleting msgQueue" << std::endl;
+    delete msgQueue;
+    std::cout << "Done." << std::endl;
 }
