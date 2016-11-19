@@ -12,18 +12,16 @@ include_directories("${PROJECT_INCLUDE_DIR}")
 # ZMQ
 find_package(ZMQ REQUIRED)
 if(ZMQ_FOUND)
-    include_directories(${ZMQ_INCLUDE_DIRS})
-    list(APPEND ${PROJECT_NAME}_EXTERNAL_LIBRARIES "${ZMQ_LIBRARIES}")
+    include_directories(${ZMQ_INCLUDE_DIR})
 endif()
 
 # ZMQPP
 find_package(ZMQPP REQUIRED)
 if(ZMQPP_FOUND)
-    include_directories(${ZMQPP_INCLUDE_DIRS})
-    list(APPEND ${PROJECT_NAME}_EXTERNAL_LIBRARIES "${ZMQPP_LIBRARIES}")
+    MESSAGE(WARNING "ZMQPPINCL=${ZMQPP_INCLUDE_DIR}")
+    include_directories(${ZMQPP_INCLUDE_DIR})
 endif()
 
-include(FindCapnProto)
 find_package(CapnProto REQUIRED)
 
 file(MAKE_DIRECTORY ${CMAKE_CURRENT_SOURCE_DIR}/include/tidings)
@@ -42,12 +40,16 @@ ExternalProject_Add(
 )
 
 set(SOURCE_FILES
-    src/CSAOptMessageQueue.cpp src/CSAOptMessageQueue.h src/kj/KjStringPipe.h)
+    src/CSAOptMessageQueue.cpp src/CSAOptMessageQueue.h src/kj/KjStringPipe.h src/StatsGatherer.h)
 
 file(GLOB CAPNP_FILES "include/tidings/*.capnp.c++")
 
+find_package(Threads REQUIRED)
+
+MESSAGE(WARNING "ZMQLIB=${ZMQ_LIBRARY} and ZMQPPLIB=${ZMQPP_LIBRARY}")
+
 add_executable(csaopt_zmq src/main.cpp ${SOURCE_FILES} ${CAPNP_SRCS})
-target_link_libraries(csaopt_zmq ${ZMQ_LIBRARIES} ${ZMQPP_LIBRARIES} ${CAPNP_LIBRARIES})
+target_link_libraries(csaopt_zmq ${ZMQ_LIBRARY} ${ZMQPP_LIBRARY} ${CAPNP_LIBRARIES} Threads::Threads)
 
 enable_testing()
 file(GLOB TEST_FILES "test/*.cpp")
