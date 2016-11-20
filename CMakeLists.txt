@@ -46,10 +46,9 @@ file(GLOB CAPNP_FILES "include/tidings/*.capnp.c++")
 
 find_package(Threads REQUIRED)
 
-MESSAGE(WARNING "ZMQLIB=${ZMQ_LIBRARY} and ZMQPPLIB=${ZMQPP_LIBRARY}")
-
 add_executable(csaopt_zmq src/main.cpp ${SOURCE_FILES} ${CAPNP_SRCS})
 target_link_libraries(csaopt_zmq ${ZMQ_LIBRARY} ${ZMQPP_LIBRARY} ${CAPNP_LIBRARIES} Threads::Threads)
+add_dependencies(csaopt_zmq csaopt-tidings)
 
 enable_testing()
 file(GLOB TEST_FILES "test/*.cpp")
