@@ -5,14 +5,13 @@
 #pragma once
 
 #include <cstdio>
-#include <sys/sysinfo.h>
 #include <cstring>
 #include <cstdlib>
-#include <bits/shared_ptr.h>
 #include <spdlog/spdlog.h>
 
 #ifdef __linux__
 
+#include <bits/shared_ptr.h>
 #include "sys/types.h"
 #include "sys/sysinfo.h"
 #include "stdlib.h"
@@ -43,6 +42,7 @@ public:
 
     Stats computeStats() {
         Stats stats{-1, -1, -1, -1, -1, -1.0, -1.0, -1, -1};
+#ifdef __linux__
         struct sysinfo memInfo;
         int error = sysinfo(&memInfo);
 
@@ -59,6 +59,9 @@ public:
         getUsedVirtualMemory(memInfo, stats);
         getCPULoad(stats);
         getCPULoadByMe(stats);
+#endif
+
+        return stats;
     }
 
 private:
@@ -69,6 +72,7 @@ private:
     std::shared_ptr<spdlog::logger> logger;
 
     void initStats() {
+#ifdef __linux__
         FILE *file;
         struct tms timeSample;
         char line[128];
@@ -83,6 +87,7 @@ private:
             if (strncmp(line, "processor", 9) == 0) numProcessors++;
         }
         fclose(file);
+#endif
     }
 
     void getTotalVirtualMemory(struct sysinfo &memInfo, Stats &stats) {
