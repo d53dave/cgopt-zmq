@@ -8,7 +8,6 @@ namespace CSAOpt {
 
     std::mutex mutex;
 
-
     MessageQueue::MessageQueue(unsigned int tidingsPort, unsigned int plumbingPort) {
         std::vector<spdlog::sink_ptr> sinks;
 
@@ -23,6 +22,8 @@ namespace CSAOpt {
         this->run = true;
 
         this->statsGatherer = StatsGatherer();
+
+        this->heartbeatTimeout = std::chrono::seconds(10); // TODO: configurable
 
         this->logger->info("Messagequeue started on with ports {} and {}", tidingsPort, plumbingPort);
 
@@ -93,9 +94,11 @@ namespace CSAOpt {
 
 
                 socket.send(resp);
-
+                logger->debug("Response for tiding with id {} sent", tiding.getId().cStr());
                 auto end = std::chrono::high_resolution_clock::now();
-                saveResponseTime(std::chrono::duration_cast<std::chrono::microseconds>(end - begin).count());
+                auto responseTime = std::chrono::duration_cast<std::chrono::microseconds>(end - begin).count();
+                saveResponseTime(responseTime);
+                logger->debug("Response time for tiding with id {} was {}ms", tiding.getId().cStr(), responseTime);
             }
         }
         this->finished = true;
@@ -163,19 +166,20 @@ namespace CSAOpt {
                         break;
                 }
 
-                pipe.clear();
-                writePackedMessage(pipe, message);
+                kj::std::StringPipe pipe2;
+                writePackedMessage(pipe2, message);
 
                 logger->info("Sending response for plumbing with id {}", plumbing.getId().cStr());
 
                 zmqpp::message resp;
-                resp << pipe.getData().c_str();
+                resp << pipe2.getData();
 
                 socket.send(resp);
+                logger->debug("Response for plumbing with id {} sent", plumbing.getId().cStr());
                 auto end = std::chrono::high_resolution_clock::now();
-                saveResponseTime(std::chrono::duration_cast<std::chrono::microseconds>(end - begin).count());
-
-                handleWorkerTimeouts(members);
+                auto responseTime = std::chrono::duration_cast<std::chrono::microseconds>(end - begin).count();
+                saveResponseTime(responseTime);
+                logger->debug("Response time for plumbing with id {} was {}ms", plumbing.getId().cStr(), responseTime);
             }
         }
         this->finished = true;
@@ -237,15 +241,20 @@ namespace CSAOpt {
 
     void MessageQueue::handleWorkerTimeouts(CSAOpt::memberMap members) {
         auto now = std::chrono::system_clock::now();
-        for (auto it = members.cbegin(); it != members.cend();) {
+        auto hbTimeout = this->heartbeatTimeout;
+
+        for(auto it = members.begin(); it != members.end(); ) {
             auto heartbeat = it->second;
             auto msElapsedSinceHB = std::chrono::duration_cast<std::chrono::milliseconds>(now - heartbeat);
-            if (msElapsedSinceHB > this->heartbeatTimeout) {
-                logger->warn("Worker {} has timed out ({}ms > {}ms)", it->first, msElapsedSinceHB.count(),
-                             this->heartbeatTimeout.count());
-                members.erase(it);
+
+            if(msElapsedSinceHB > hbTimeout) {
+                this->logger->warn("Worker {} has timed out ({}ms since last heartbeat)",
+                                   it->first, msElapsedSinceHB.count());
+                it = members.erase(it);
             }
-            it++;
+            else {
+                ++it;
+            }
         }
     }
 
@@ -278,8 +287,11 @@ namespace CSAOpt {
             this->logger->debug("Destructor waiting for threads to join");
             this->logger->flush();
             this->plumbingRepReqThread.join();
+            this->logger->debug("Plumbing Thread joined");
             this->tidingsRepReqThread.join();
+            this->logger->debug("Tidings Thread joined");
             this->statsThread.join();
+            this->logger->debug("Stats Thread joined");
         });
 
         std::chrono::seconds myTimeout(5);
