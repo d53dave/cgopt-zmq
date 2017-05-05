@@ -8,7 +8,7 @@
 #include <map>
 #include <tidings/tidings.capnp.h>
 #include <spdlog/spdlog.h>
-#include <zmq.hpp>
+#include <zmq.h>
 #include <zmqpp/zmqpp.hpp>
 #include <capnp/serialize-packed.h>
 #include <tidings/plumbing.capnp.h>
