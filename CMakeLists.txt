@@ -47,6 +47,7 @@ file(GLOB CAPNP_FILES "include/tidings/*.capnp.c++")
 find_package(Threads REQUIRED)
 
 add_executable(csaopt_zmq src/main.cpp ${SOURCE_FILES} ${CAPNP_SRCS})
+
 target_link_libraries(csaopt_zmq ${ZMQ_LIBRARY} ${ZMQPP_LIBRARY} ${CAPNP_LIBRARIES} Threads::Threads)
 add_dependencies(csaopt_zmq csaopt-tidings)
 
@@ -60,6 +61,6 @@ foreach(testFile ${TEST_FILES})
 
     #Add compile target
     add_executable(${testName} ${testFile} ${SOURCE_FILES} ${CAPNP_SRCS})
-    target_link_libraries(${testName} zmq zmqpp ${CAPNP_LIBRARIES})
+    target_link_libraries(${testName} zmq zmqpp ${CAPNP_LIBRARIES} Threads::Threads)
     add_test(NAME ${testName} COMMAND ${testName} )
 endforeach(testFile)
