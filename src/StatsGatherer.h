@@ -40,8 +40,8 @@ public:
         this->logger = spdlog::get("csaopt-zmq-logger");
     }
 
-    Stats computeStats() {
-        Stats stats{-1, -1, -1, -1, -1, -1.0, -1.0, -1, -1};
+    Stats & computeStats(Stats & stats) {
+        
 #ifdef __linux__
         struct sysinfo memInfo;
         int error = sysinfo(&memInfo);
