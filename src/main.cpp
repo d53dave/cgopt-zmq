@@ -1,5 +1,6 @@
 #include "CSAOptMessageQueue.h"
 #include <sstream>
+#include <iostream>
 #include <csignal>
 
 namespace {
