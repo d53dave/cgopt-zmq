@@ -23,6 +23,7 @@ namespace CSAOpt {
 
         this->statsGatherer = StatsGatherer();
 
+        this->currentStats = Stats{-1, -1, -1, -1, -1, -1.0, -1.0, -1, -1};
         this->heartbeatTimeout = std::chrono::seconds(10); // TODO: configurable
 
         this->logger->info("Messagequeue started on with ports {} and {}", tidingsPort, plumbingPort);
@@ -259,7 +260,7 @@ namespace CSAOpt {
     }
 
     void MessageQueue::handleStats(Plumbing::Builder &response, memberMap const &members) {
-        Stats &stats = this->getCurrentStats();
+        Stats stats = this->getCurrentStats();
 
         stats.numWorkers = members.size();
         stats.queueSizeTidings = this->workQueue.size();
@@ -311,14 +312,13 @@ namespace CSAOpt {
         std::chrono::milliseconds sleepPeriod(500);
         while (this->run) {
             std::this_thread::sleep_for(sleepPeriod);
-            Stats stats = this->statsGatherer.computeStats();
+            this->statsGatherer.computeStats(this->currentStats);
             std::lock_guard<std::mutex> guard(mutex);
-            this->currentStats = stats;
         }
         this->finished = true;
     }
 
-    Stats &MessageQueue::getCurrentStats() {
+    Stats& MessageQueue::getCurrentStats() {
         std::lock_guard<std::mutex> guard(mutex);  // This now locked your mutex
         return this->currentStats;
     }
