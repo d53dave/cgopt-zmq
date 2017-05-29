@@ -26,14 +26,13 @@ namespace CSAOpt {
         explicit MessageQueue(unsigned int tidingsPort, unsigned int plumbingsPort);
         void logDebug();
         ~MessageQueue();
-        volatile bool finished = false;
     private:
         static constexpr size_t responseTimeAvgCount = 3;
         long durationsMicrosecs[responseTimeAvgCount] = {0};
         void saveResponseTime(long d);
 
-        std::queue<std::string> workQueue;
-        std::map<std::string, std::string> results;
+//        std::vector<std::string> workQueue = {};
+//        std::map<std::string, std::string> results;
 
         void runTidingsRepReqLoop(std::string host, unsigned int port);
         void runPlumbingRepReqLoop(std::string host, unsigned int port);
@@ -44,7 +43,6 @@ namespace CSAOpt {
 
         std::shared_ptr<spdlog::logger> logger;
 
-        StatsGatherer statsGatherer;
         Stats currentStats;
         Stats& getCurrentStats();
 
@@ -58,7 +56,7 @@ namespace CSAOpt {
         void handleHeartbeat(Plumbing::Builder& builder, Plumbing::Reader& reader, memberMap& members);
         void handleStats(Plumbing::Builder& builder, memberMap const& members);
 
-        void handleWorkerTimeouts(memberMap map);
+        void handleWorkerTimeouts(memberMap& map);
 
         void computeStatsLoop();
     };
