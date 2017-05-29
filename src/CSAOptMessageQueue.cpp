@@ -21,8 +21,6 @@ namespace CSAOpt {
         std::string host{"*"};
         this->run = true;
 
-        this->statsGatherer = StatsGatherer();
-
         this->currentStats = Stats{-1, -1, -1, -1, -1, -1.0, -1.0, -1, -1};
         this->heartbeatTimeout = std::chrono::seconds(10); // TODO: configurable
 
@@ -50,7 +48,7 @@ namespace CSAOpt {
         };
 
         const zmqpp::endpoint_t endpoint = fmt::format("tcp://{}:{}", host, port);
-        this->logger->info("Binding socket on {}", endpoint);
+        this->logger->info("Binding tiding socket on {}", endpoint);
         socket.bind(endpoint);
 
         zmqpp::poller poller;
@@ -102,7 +100,6 @@ namespace CSAOpt {
                 logger->debug("Response time for tiding with id {} was {}ms", tiding.getId().cStr(), responseTime);
             }
         }
-        this->finished = true;
     }
 
     void MessageQueue::runPlumbingRepReqLoop(std::string host, unsigned int port) {
@@ -116,7 +113,7 @@ namespace CSAOpt {
         zmqpp::socket socket{context, type};
 
         const zmqpp::endpoint_t endpoint = fmt::format("tcp://{}:{}", host, port);
-        this->logger->info("Binding socket on {}", endpoint.c_str());
+        this->logger->info("Binding plumbing socket on {}", endpoint.c_str());
         socket.bind(endpoint);
 
         zmqpp::poller poller;
@@ -163,7 +160,7 @@ namespace CSAOpt {
                         handleStats(plumbing, members);
                         break;
                     default:
-//                    this->logger->error("Unrecognized Message type: {}", recvPlumbing.getType());
+                        logger->warn("Unrecognized Message type: {}", (uint16_t) recvPlumbing.getType());
                         break;
                 }
 
@@ -183,7 +180,8 @@ namespace CSAOpt {
                 logger->debug("Response time for plumbing with id {} was {}ms", plumbing.getId().cStr(), responseTime);
             }
         }
-        this->finished = true;
+//        workQueue = {};
+        members.clear();
     }
 
     static size_t lastResponseTimeIdx = 0;
@@ -240,7 +238,7 @@ namespace CSAOpt {
         }
     }
 
-    void MessageQueue::handleWorkerTimeouts(CSAOpt::memberMap members) {
+    void MessageQueue::handleWorkerTimeouts(CSAOpt::memberMap &members) {
         auto now = std::chrono::system_clock::now();
         auto hbTimeout = this->heartbeatTimeout;
 
@@ -263,7 +261,7 @@ namespace CSAOpt {
         Stats stats = this->getCurrentStats();
 
         stats.numWorkers = members.size();
-        stats.queueSizeTidings = this->workQueue.size();
+//        stats.queueSizeTidings = this->workQueue.size();
 
         double avgTime = 0;
         for (auto &&val : this->durationsMicrosecs) {
@@ -291,7 +289,7 @@ namespace CSAOpt {
             this->logger->debug("Plumbing Thread joined");
             this->tidingsRepReqThread.join();
             this->logger->debug("Tidings Thread joined");
-            this->statsThread.join();
+//            this->statsThread.join();
             this->logger->debug("Stats Thread joined");
         });
 
@@ -305,6 +303,7 @@ namespace CSAOpt {
         }
 
         spdlog::drop_all();
+        this->logger->debug("Destructor finished.");
     }
 
 
@@ -312,10 +311,10 @@ namespace CSAOpt {
         std::chrono::milliseconds sleepPeriod(500);
         while (this->run) {
             std::this_thread::sleep_for(sleepPeriod);
-            this->statsGatherer.computeStats(this->currentStats);
+
             std::lock_guard<std::mutex> guard(mutex);
+            StatsGatherer::computeStats(this->currentStats);
         }
-        this->finished = true;
     }
 
     Stats& MessageQueue::getCurrentStats() {
