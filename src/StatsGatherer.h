@@ -35,12 +35,7 @@ typedef struct {
 
 class StatsGatherer {
 public:
-    StatsGatherer() {
-        initStats();
-        this->logger = spdlog::get("csaopt-zmq-logger");
-    }
-
-    Stats & computeStats(Stats & stats) {
+    static Stats & computeStats(Stats & stats) {
         
 #ifdef __linux__
         struct sysinfo memInfo;
@@ -70,25 +65,6 @@ private:
     unsigned long long lastTotalUser, lastTotalUserLow, lastTotalSys, lastTotalIdle;
 
     std::shared_ptr<spdlog::logger> logger;
-
-    void initStats() {
-#ifdef __linux__
-        FILE *file;
-        struct tms timeSample;
-        char line[128];
-
-        lastCPU = times(&timeSample);
-        lastSysCPU = timeSample.tms_stime;
-        lastUserCPU = timeSample.tms_utime;
-
-        file = fopen("/proc/cpuinfo", "r");
-        numProcessors = 0;
-        while (fgets(line, 128, file) != NULL) {
-            if (strncmp(line, "processor", 9) == 0) numProcessors++;
-        }
-        fclose(file);
-#endif
-    }
 
     void getTotalVirtualMemory(struct sysinfo &memInfo, Stats &stats) {
 #ifdef __linux__
