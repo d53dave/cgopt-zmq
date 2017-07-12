@@ -1,0 +1,17 @@
+[[source]]
+verify_ssl = true
+url = "https://pypi.python.org/simple"
+
+[dev-packages]
+coveralls = "*"
+flake8 = "*"
+pytest = "*"
+pytest-cov = "*"
+coverage = "*"
+mypy = "*"
+bumpversion = "*"
+
+[packages]
+pyzmq = "*"
+arrow = "*"
+pycapnp = "*"
