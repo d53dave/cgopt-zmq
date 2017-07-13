@@ -1,7 +1,7 @@
 {
     "_meta": {
         "hash": {
-            "sha256": "cb65967bdf3a7372749ce6144be4ee63f412aeeac624342fda3a2b58b1c43c15"
+            "sha256": "62454ba0949a4d5414374714ea19faa875e8e6d3cae0fd1b1b3470342a9ce29d"
         },
         "requires": {},
         "sources": [
@@ -11,6 +11,86 @@
             }
         ]
     },
-    "default": {},
-    "develop": {}
+    "default": {
+        "arrow": {
+            "version": "==0.10.0"
+        },
+        "psutil": {
+            "version": "==5.2.2"
+        },
+        "pycapnp": {
+            "version": "==0.5.12"
+        },
+        "python-dateutil": {
+            "version": "==2.6.1"
+        },
+        "pyzmq": {
+            "version": "==16.0.2"
+        },
+        "six": {
+            "version": "==1.10.0"
+        },
+        "tornado": {
+            "version": "==4.5.1"
+        }
+    },
+    "develop": {
+        "bumpversion": {
+            "version": "==0.5.3"
+        },
+        "certifi": {
+            "version": "==2017.4.17"
+        },
+        "chardet": {
+            "version": "==3.0.4"
+        },
+        "coverage": {
+            "version": "==4.4.1"
+        },
+        "coveralls": {
+            "version": "==1.1"
+        },
+        "docopt": {
+            "version": "==0.6.2"
+        },
+        "flake8": {
+            "version": "==3.3.0"
+        },
+        "idna": {
+            "version": "==2.5"
+        },
+        "mccabe": {
+            "version": "==0.6.1"
+        },
+        "mypy": {
+            "version": "==0.520"
+        },
+        "py": {
+            "version": "==1.4.34"
+        },
+        "pycodestyle": {
+            "version": "==2.3.1"
+        },
+        "pyflakes": {
+            "version": "==1.5.0"
+        },
+        "pytest": {
+            "version": "==3.1.3"
+        },
+        "pytest-cov": {
+            "version": "==2.5.1"
+        },
+        "requests": {
+            "version": "==2.18.1"
+        },
+        "setuptools": {
+            "version": "==36.0.1"
+        },
+        "typed-ast": {
+            "version": "==1.0.4"
+        },
+        "urllib3": {
+            "version": "==1.21.1"
+        }
+    }
 }
