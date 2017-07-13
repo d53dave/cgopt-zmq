@@ -8,7 +8,7 @@ compiler:
 before_script:
   - sudo add-apt-repository ppa:ubuntu-toolchain-r/test -y
   - sudo apt-get update -qq
-  - sudo apt-get install libzmq3-dev libzmqpp-dev libcapnp-dev capnproto g++-4.9 -y
+  - sudo apt-get install libzmq3-dev libcapnp-dev capnproto g++-4.9 -y
   - sudo update-alternatives --install /usr/bin/g++ g++ /usr/bin/g++-4.9 50
   - wget https://cmake.org/files/v3.5/cmake-3.5.2-Linux-x86_64.sh --no-check-certificate -O cmake.sh
   - sudo sh cmake.sh --prefix=/usr/local --exclude-subdir
