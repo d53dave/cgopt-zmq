@@ -2,22 +2,22 @@ import os
 import asyncio
 import zmq.asyncio
 
-import capnp
-capnp.remove_import_hook()
-
-THIS_DIR = os.path.dirname(__file__)
-tidings_capnp = capnp.load(os.path.join(THIS_DIR, '../capnp/src/tidings.capnp'))
-plumbing_capnp = capnp.load(os.path.join(THIS_DIR, '../capnp/src/plumbing.capnp'))
-
 from tornado.ioloop import IOLoop
 from tornado.platform.asyncio import AsyncIOMainLoop
 
+import capnp
+capnp.remove_import_hook()
+
+CWD = os.path.dirname(__file__)
+tidings_capnp = capnp.load(os.path.join(CWD, '../capnp/src/tidings.capnp'))
+plumbing_capnp = capnp.load(os.path.join(CWD, '../capnp/src/plumbing.capnp'))
 
 # Tell tornado to use asyncio
 AsyncIOMainLoop().install()
 
+
 class RepReqServer:
-    def __init__(self, tidings_port, plumbing_port):
+    def __init__(self, tidings_port=9988, plumbing_port=9989):
         self.tidings_port = tidings_port
         self.plumbing_port = plumbing_port
         self.ctx = zmq.asyncio.Context()
