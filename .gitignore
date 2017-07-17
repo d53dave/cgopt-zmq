@@ -37,3 +37,6 @@ build/
 
 # mypy
 .mypy*
+
+## __pycache__
+**/__pycache__
