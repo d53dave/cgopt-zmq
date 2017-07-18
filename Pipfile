@@ -2,6 +2,13 @@
 verify_ssl = true
 url = "https://pypi.python.org/simple"
 
+[packages]
+pyzmq = "*"
+arrow = "*"
+pycapnp = "*"
+tornado = "*"
+psutil = "*"
+
 [dev-packages]
 coveralls = "*"
 flake8 = "*"
@@ -10,10 +17,5 @@ pytest-cov = "*"
 coverage = "*"
 mypy = "*"
 bumpversion = "*"
-
-[packages]
-pyzmq = "*"
-arrow = "*"
-pycapnp = "*"
-tornado = "*"
-psutil = "*"
+pytest-timeout = "*"
+pytest-tornado = "*"
