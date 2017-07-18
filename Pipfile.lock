@@ -1,7 +1,7 @@
 {
     "_meta": {
         "hash": {
-            "sha256": "819b13c68db6978feb9524c9d47405ffb47e26a3741d27c1ef00c18250f31238"
+            "sha256": "2f9d761d99f67549ffe558dd5b4791a88b8770572a2ddc74c17f2a70bd4a6a98"
         },
         "requires": {},
         "sources": [
@@ -15,6 +15,9 @@
         "arrow": {
             "version": "==0.10.0"
         },
+        "click": {
+            "version": "==6.7"
+        },
         "psutil": {
             "version": "==5.2.2"
         },
@@ -25,7 +28,7 @@
             "version": "==2.6.1"
         },
         "pyzmq": {
-            "git": "https://github.com/zeromq/pyzmq.git"
+            "version": "==16.0.2"
         },
         "six": {
             "version": "==1.10.0"
@@ -49,9 +52,6 @@
         },
         "coveralls": {
             "version": "==1.1"
-        },
-        "cython": {
-            "version": "==0.25.2"
         },
         "docopt": {
             "version": "==0.6.2"
