@@ -12,7 +12,7 @@ before_script:
   - pipenv install --dev
   - sh fix_pyzmq.sh
 
-script: pipenv run py.test --cov tests
+script: pipenv run py.test --cov=messagequeue tests
 
 after_success:
     - if [[ $ENV == python=3.5* ]]; then
