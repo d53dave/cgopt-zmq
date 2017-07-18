@@ -2,12 +2,6 @@
 verify_ssl = true
 url = "https://pypi.python.org/simple"
 
-[packages]
-arrow = "*"
-pycapnp = "*"
-tornado = "*"
-psutil = "*"
-
 [dev-packages]
 coveralls = "*"
 flake8 = "*"
@@ -18,6 +12,12 @@ mypy = "*"
 bumpversion = "*"
 pytest-timeout = "*"
 Cython = "*"
+
+[packages]
+arrow = "*"
+pycapnp = "*"
+tornado = "*"
+psutil = "*"
 
 [packages.pyzmq]
 git = "https://github.com/zeromq/pyzmq.git"

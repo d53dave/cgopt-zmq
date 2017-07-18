@@ -1,7 +1,7 @@
 {
     "_meta": {
         "hash": {
-            "sha256": "cb7c0a0e9be7c79cba84efcc1bcd52ad0318349408d874925cb6dfdc6f33f419"
+            "sha256": "819b13c68db6978feb9524c9d47405ffb47e26a3741d27c1ef00c18250f31238"
         },
         "requires": {},
         "sources": [
@@ -23,6 +23,9 @@
         },
         "python-dateutil": {
             "version": "==2.6.1"
+        },
+        "pyzmq": {
+            "git": "https://github.com/zeromq/pyzmq.git"
         },
         "six": {
             "version": "==1.10.0"
@@ -46,6 +49,9 @@
         },
         "coveralls": {
             "version": "==1.1"
+        },
+        "cython": {
+            "version": "==0.25.2"
         },
         "docopt": {
             "version": "==0.6.2"
