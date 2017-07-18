@@ -10,5 +10,6 @@ sudo: required
 before_script:
   - pip install pipenv
   - pipenv install --dev
+  - sh fix_pyzmq.sh
 
 script: pipenv run py.test tests
