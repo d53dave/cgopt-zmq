@@ -13,3 +13,8 @@ before_script:
   - sh fix_pyzmq.sh
 
 script: pipenv run py.test tests
+
+after_success:
+    - if [[ $ENV == python=3.5* ]]; then
+          coveralls;
+      fi
