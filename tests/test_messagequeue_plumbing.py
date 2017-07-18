@@ -41,8 +41,9 @@ def csaopt_client():
     '''Returns a client instance'''
     yield QueueClient()
     print("Client cleanup")
-    
 
+
+@pytest.mark.timeout(3000)
 def test_join(csaopt_server, csaopt_client):
     """A worker wants to join the hive"""
     with csaopt_server:
@@ -61,13 +62,36 @@ def test_join(csaopt_server, csaopt_client):
         message = plumbing_capnp.Plumbing.from_bytes_packed(response[0])
         assert message.type == 'ack'
 
+
+def test_double_join(csaopt_server, csaopt_client):
+    """A worker tries to join after it already joined"""
+    with csaopt_server:
+        message = plumbing_capnp.Plumbing.new_message(
+            id='1235',
+            sender='worker2',
+            timestamp=arrow.utcnow().timestamp,
+            type='register'
+        )
+
+        async def doublerequest(message):
+            bytes = message.to_bytes_packed()
+            await csaopt_client.send_request([bytes])
+            return await csaopt_client.send_request([bytes])
+
+        ioloop = IOLoop.current()
+        response = ioloop.run_sync(
+            lambda: doublerequest(message))
+
+        response = plumbing_capnp.Plumbing.from_bytes_packed(response[0])
+        assert response.type == 'error'
+        assert 'already registered' in str(response.message)
+
 # def TestLeaveAfterJoin():
 #     """A worker wants to leave after it joined"""
 #     pass
 
 
 # def TestDoubleJoin():
-#     """A worker tries to join after it already joined"""
 #     pass
 
 

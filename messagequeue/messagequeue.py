@@ -3,8 +3,7 @@ import asyncio
 import zmq.asyncio
 import logging
 import arrow
-
-from tornado.gen import with_timeout
+from .strings import messages
 from tornado.ioloop import IOLoop
 from tornado.platform.asyncio import AsyncIOMainLoop
 import capnp
@@ -31,6 +30,10 @@ class RepReqServer:
         self.run = True
         self.plumbingsocket = None
         self.tidingsocket = None
+
+        self.workers = {}
+
+
         ioloop.spawn_callback(self._tidings_repreq_loop)
         ioloop.spawn_callback(self._plumbing_repreq_loop)
 
@@ -41,15 +44,20 @@ class RepReqServer:
         while self.run:
             try:
                 packed_bytes = await asyncio.wait_for(self.plumbingsocket.recv_multipart(), timeout=0.5)
-                logger.debug('Received packed bytes with length %s' % len(packed_bytes))
+                logger.debug('Received packed bytes with length {}'.format(len(packed_bytes)))
                 message = plumbing_capnp.Plumbing.from_bytes_packed(packed_bytes[0])
 
-                response = plumbing_capnp.Plumbing.new_message(
-                            id=message.id,
-                            timestamp=arrow.utcnow().timestamp,
-                            type='ack')
-            
-                await self.plumbingsocket.send_multipart([response.to_bytes_packed()], flags=zmq.NOBLOCK)
+                response = None
+
+                if message.type == 'register': # comparison with 'is' returns false
+                    response = self._handle_worker_register(message)
+                else:
+                    raise NotImplementedError
+                
+                response_bytes = response.to_bytes_packed()
+
+                logger.debug('Sending response {} with length {}'.format(response, len(response_bytes)))
+                await self.plumbingsocket.send_multipart([response_bytes], flags=zmq.NOBLOCK)
             except asyncio.TimeoutError:
                 logger.info('Timeout')
                 continue
@@ -67,8 +75,21 @@ class RepReqServer:
         
         self.tidingsocket.close(linger=0.0)
 
-    def _handle_worker_join(self):
-        pass
+    def _handle_worker_register(self, request: plumbing_capnp.Plumbing) -> plumbing_capnp.Plumbing:
+        response = plumbing_capnp.Plumbing.new_message()
+        now = arrow.utcnow()
+
+        response.id = request.id
+        response.timestamp = now.timestamp
+
+        if request.sender in self.workers:
+            response.type = 'error'
+            response.message = messages['ALREADY_REGISTERED']
+        else:
+            self.workers[request.sender] = now
+            response.type = 'ack'
+        
+        return response
 
     def _handle_worker_leave(self):
         pass
