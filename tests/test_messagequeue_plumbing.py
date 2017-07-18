@@ -4,52 +4,62 @@ import pytest
 import os
 import arrow
 import zmq
-from server import messagequeue
+from context import messagequeue
+from tornado.ioloop import IOLoop
 import capnp
 capnp.remove_import_hook()
 
-THIS_DIR = os.path.dirname(__file__)
+CWD = os.path.dirname(__file__)
 plumbing_capnp = capnp.load(
-    os.path.join(THIS_DIR, '../../lib/capnp/src/plumbing.capnp'))
+    os.path.join(CWD, '../messagequeue/capnp/src/plumbing.capnp'))
 
-PLUMBING_PORT = 9988
+TESTPORT = 9988
 
 
 class QueueClient:
     def __init__(self):
-        self.ctx = zmq.Context()
+        self.ctx = zmq.asyncio.Context()
         self.socket = self.ctx.socket(zmq.REQ)
 
-    def send_request(self, message):
-        self.socket.connect('tcp://127.0.0.1:' + str(PLUMBING_PORT))
-        self.socket.send(message)
-        return self.socket.recv()
+    async def send_request(self, message):
+        self.socket.connect('tcp://127.0.0.1:' + str(TESTPORT))
+        await self.socket.send_multipart(message)
+        return await self.socket.recv_multipart()
 
 
 @pytest.fixture
 def csaopt_server():
     '''Returns an instance of the messagequeue server'''
-    return messagequeue.RepReqServer(PLUMBING_PORT, PLUMBING_PORT + 1)
+    server = messagequeue.RepReqServer(IOLoop.current(), TESTPORT+1, TESTPORT)
+    yield server
+    server.stop()
+    # return None
 
 
 @pytest.fixture
-def my_client():
+def csaopt_client():
     '''Returns a client instance'''
-    return QueueClient()
+    yield QueueClient()
+    print("Client cleanup")
+    
 
-
-def test_join(csaopt_server, my_client):
+def test_join(csaopt_server, csaopt_client):
     """A worker wants to join the hive"""
-    message = plumbing_capnp.Plumbing.new_message()
-    message.id = '1234'
-    message.sender = 'worker1'
-    message.timestamp = arrow.utcnow().timestamp
-    message.type = 'register'
+    with csaopt_server:
+        print('Test Join entered')
+        message = plumbing_capnp.Plumbing.new_message(
+            id='1234', 
+            sender='worker1',
+            timestamp=arrow.utcnow().timestamp,
+            type='register'
+        )
 
-    csaopt_server.start_loop()
-    response = my_client.send_request(message.to_bytes())
+        ioloop = IOLoop.current()
+        response = ioloop.run_sync(
+            lambda: csaopt_client.send_request([message.to_bytes_packed()]))
 
-    assert response.type == 'ack'
+        message = plumbing_capnp.Plumbing.from_bytes_packed(response[0])
+        assert message.type == 'ack'
 
 # def TestLeaveAfterJoin():
 #     """A worker wants to leave after it joined"""
