@@ -18,4 +18,4 @@ coverage = "*"
 mypy = "*"
 bumpversion = "*"
 pytest-timeout = "*"
-pytest-tornado = "*"
+
