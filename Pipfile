@@ -11,13 +11,10 @@ coverage = "*"
 mypy = "*"
 bumpversion = "*"
 pytest-timeout = "*"
-Cython = "*"
 
 [packages]
 arrow = "*"
 pycapnp = "*"
 tornado = "*"
 psutil = "*"
-
-[packages.pyzmq]
-git = "https://github.com/zeromq/pyzmq.git"
+pyzmq = "*"

@@ -30,12 +30,13 @@ class RepReqServer:
         self.queue = asyncio.Queue()
         self.run = True
         self.plumbingsocket = None
-        self.tidingssocket = None
+        self.tidingsocket = None
         ioloop.spawn_callback(self._tidings_repreq_loop)
         ioloop.spawn_callback(self._plumbing_repreq_loop)
 
     async def _plumbing_repreq_loop(self):
         self.plumbingsocket = self.ctx.socket(zmq.REP)
+
         self.plumbingsocket.bind('tcp://*:' + str(self.plumbing_port))
         while self.run:
             try:
@@ -57,6 +58,7 @@ class RepReqServer:
 
     async def _tidings_repreq_loop(self):
         self.tidingsocket = self.ctx.socket(zmq.REP)
+
         self.tidingsocket.bind('tcp://*:' + str(self.tidings_port))
         while self.run:
             greeting = await asyncio.wait_for(self.tidingsocket.recv_multipart(), timeout=0.5)
