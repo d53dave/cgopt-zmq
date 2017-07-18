@@ -1,53 +1,69 @@
 import os
 import asyncio
 import zmq.asyncio
+import logging
+import arrow
 
+from tornado.gen import with_timeout
 from tornado.ioloop import IOLoop
 from tornado.platform.asyncio import AsyncIOMainLoop
-
 import capnp
+
+AsyncIOMainLoop().install()
+
 capnp.remove_import_hook()
 
+logger = logging.getLogger(__name__)
+
 CWD = os.path.dirname(__file__)
-tidings_capnp = capnp.load(os.path.join(CWD, '../capnp/src/tidings.capnp'))
-plumbing_capnp = capnp.load(os.path.join(CWD, '../capnp/src/plumbing.capnp'))
+tidings_capnp = capnp.load(os.path.join(CWD, 'capnp/src/tidings.capnp'))
+plumbing_capnp = capnp.load(os.path.join(CWD, 'capnp/src/plumbing.capnp'))
 
 # Tell tornado to use asyncio
-AsyncIOMainLoop().install()
 
 
 class RepReqServer:
-    def __init__(self, tidings_port=9988, plumbing_port=9989):
+    def __init__(self, ioloop=IOLoop.current(), tidings_port=9988, plumbing_port=9989):
         self.tidings_port = tidings_port
         self.plumbing_port = plumbing_port
         self.ctx = zmq.asyncio.Context()
         self.queue = asyncio.Queue()
-        self.loop = IOLoop.current()
+        self.run = True
+        self.plumbingsocket = None
+        self.tidingssocket = None
+        ioloop.spawn_callback(self._tidings_repreq_loop)
+        ioloop.spawn_callback(self._plumbing_repreq_loop)
 
     async def _plumbing_repreq_loop(self):
-        socket = self.ctx.socket(zmq.REP)
-        socket.bind('tcp://*:' + str(self.plumbing_port))
-        while True:
-            greeting = await socket.recv_multipart()
-            print('Received' + str(greeting))
-            await socket.send_multipart([b"ACK"])
+        self.plumbingsocket = self.ctx.socket(zmq.REP)
+        self.plumbingsocket.bind('tcp://*:' + str(self.plumbing_port))
+        while self.run:
+            try:
+                packed_bytes = await asyncio.wait_for(self.plumbingsocket.recv_multipart(), timeout=0.5)
+                logger.debug('Received packed bytes with length %s' % len(packed_bytes))
+                message = plumbing_capnp.Plumbing.from_bytes_packed(packed_bytes[0])
+
+                response = plumbing_capnp.Plumbing.new_message(
+                            id=message.id,
+                            timestamp=arrow.utcnow().timestamp,
+                            type='ack')
+            
+                await self.plumbingsocket.send_multipart([response.to_bytes_packed()], flags=zmq.NOBLOCK)
+            except asyncio.TimeoutError:
+                logger.info('Timeout')
+                continue
+
+        self.plumbingsocket.close(linger=0.0)
 
     async def _tidings_repreq_loop(self):
-        socket = self.ctx.socket(zmq.REP)
-        socket.bind('tcp://*:' + str(self.tidings_port))
-        while True:
-            greeting = await socket.recv_multipart()
+        self.tidingsocket = self.ctx.socket(zmq.REP)
+        self.tidingsocket.bind('tcp://*:' + str(self.tidings_port))
+        while self.run:
+            greeting = await asyncio.wait_for(self.tidingsocket.recv_multipart(), timeout=0.5)
             print('Received' + str(greeting))
-            await socket.send_multipart([b"ACK"])
-
-    async def client(self):
-        socket = self.ctx.socket(zmq.REQ)
-        socket.connect('tcp://127.0.0.1:' + str(self.plumbing_port))
-        while True:
-            await socket.send_multipart([b"Hello", b"lol"])
-            resp = await socket.recv_multipart()
-            print(resp)
-            await asyncio.sleep(1)
+            await self.tidingsocket.send_multipart([b"ACK"], flags=zmq.NOBLOCK)
+        
+        self.tidingsocket.close(linger=0.0)
 
     def _handle_worker_join(self):
         pass
@@ -61,16 +77,14 @@ class RepReqServer:
     def _handle_stats(self):
         pass
 
-    def start_loop(self):
-        """Start the messagequeue loop"""
-        self.loop.spawn_callback(self._tidings_repreq_loop)
-        self.loop.spawn_callback(self._plumbing_repreq_loop)
-        self.loop.spawn_callback(self.client)
-        self.loop.start()
+    def stop(self):
+        self.run = False
 
+    def __enter__(self):
+        pass
 
-if __name__ == '__main__':
-    print('Building Server')
-    server = RepReqServer(9998, 9999)
-    server.start_loop()
-    print('Done')
+    def __exit__(self, type, value, tb):
+        if self.tidingsocket:
+            self.tidingsocket.close()
+        if self.plumbingsocket:
+            self.plumbingsocket.close()
