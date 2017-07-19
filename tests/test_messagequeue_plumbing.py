@@ -43,7 +43,6 @@ def csaopt_client():
     print("Client cleanup")
 
 
-@pytest.mark.timeout(3000)
 def test_join(csaopt_server, csaopt_client):
     """A worker wants to register with the messagequeue"""
     with csaopt_server:
@@ -87,7 +86,6 @@ def test_double_register(csaopt_server, csaopt_client):
         assert str(message.sender) in str(response.message)
 
 
-@pytest.mark.timeout(3000)
 def test_unregister_after_register(csaopt_server, csaopt_client):
     """A worker tries to leave after it joined"""
     with csaopt_server:
@@ -117,6 +115,26 @@ def test_unregister_after_register(csaopt_server, csaopt_client):
         response = plumbing_capnp.Plumbing.from_bytes_packed(response[0])
         assert response.type == 'ack'
         assert response.id == '1238'
+
+
+def test_unregister_without_register(csaopt_server, csaopt_client):
+    """A worker wants to unregister with the messagequeue but was not registered"""
+    with csaopt_server:
+        message = plumbing_capnp.Plumbing.new_message(
+            id='1234', 
+            sender='worker1',
+            timestamp=arrow.utcnow().timestamp,
+            type='unregister'
+        )
+
+        ioloop = IOLoop.current()
+        response = ioloop.run_sync(
+            lambda: csaopt_client.send_request([message.to_bytes_packed()]))
+
+        message = plumbing_capnp.Plumbing.from_bytes_packed(response[0])
+        assert message.type == 'error'
+        assert message.sender in str(message.message)
+        assert 'not previously registered' in str(message.message)
 
 # def TestLeaveAfterJoin():
 #     """A worker wants to leave after it joined"""
