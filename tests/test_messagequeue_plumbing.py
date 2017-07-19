@@ -45,9 +45,8 @@ def csaopt_client():
 
 @pytest.mark.timeout(3000)
 def test_join(csaopt_server, csaopt_client):
-    """A worker wants to join the hive"""
+    """A worker wants to register with the messagequeue"""
     with csaopt_server:
-        print('Test Join entered')
         message = plumbing_capnp.Plumbing.new_message(
             id='1234', 
             sender='worker1',
@@ -63,8 +62,8 @@ def test_join(csaopt_server, csaopt_client):
         assert message.type == 'ack'
 
 
-def test_double_join(csaopt_server, csaopt_client):
-    """A worker tries to join after it already joined"""
+def test_double_register(csaopt_server, csaopt_client):
+    """A worker tries to register after it already registered"""
     with csaopt_server:
         message = plumbing_capnp.Plumbing.new_message(
             id='1235',
@@ -85,6 +84,39 @@ def test_double_join(csaopt_server, csaopt_client):
         response = plumbing_capnp.Plumbing.from_bytes_packed(response[0])
         assert response.type == 'error'
         assert 'already registered' in str(response.message)
+        assert str(message.sender) in str(response.message)
+
+
+@pytest.mark.timeout(3000)
+def test_unregister_after_register(csaopt_server, csaopt_client):
+    """A worker tries to leave after it joined"""
+    with csaopt_server:
+        join = plumbing_capnp.Plumbing.new_message(
+            id='1237',
+            sender='worker3',
+            timestamp=arrow.utcnow().timestamp,
+            type='register'
+        )
+        leave = plumbing_capnp.Plumbing.new_message(
+            id='1238',
+            sender='worker3',
+            timestamp=arrow.utcnow().timestamp,
+            type='unregister'
+        )
+
+        async def join_and_leave(joinmessage, leavemessage):
+            await csaopt_client.send_request([joinmessage.to_bytes_packed()])
+            return await csaopt_client.send_request([leavemessage.to_bytes_packed()])
+
+        ioloop = IOLoop.current()
+        response = ioloop.run_sync(
+            lambda: join_and_leave(join, leave))
+
+        print(str(type(leave)) + '=request, ' + str(type(response)) + '=response')
+
+        response = plumbing_capnp.Plumbing.from_bytes_packed(response[0])
+        assert response.type == 'ack'
+        assert response.id == '1238'
 
 # def TestLeaveAfterJoin():
 #     """A worker wants to leave after it joined"""

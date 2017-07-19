@@ -49,8 +49,10 @@ class RepReqServer:
 
                 response = None
 
-                if message.type == 'register': # comparison with 'is' returns false
+                if message.type == 'register':  # comparison with 'is' returns false
                     response = self._handle_worker_register(message)
+                elif message.type == 'unregister':
+                    response = self._handle_worker_unregister(message)
                 else:
                     raise NotImplementedError
                 
@@ -84,15 +86,29 @@ class RepReqServer:
 
         if request.sender in self.workers:
             response.type = 'error'
-            response.message = messages['ALREADY_REGISTERED']
+            response.message = messages['ALREADY_REGISTERED'].format(request.sender)
         else:
             self.workers[request.sender] = now
             response.type = 'ack'
         
         return response
 
-    def _handle_worker_leave(self):
-        pass
+    def _handle_worker_unregister(self, request):
+        response = plumbing_capnp.Plumbing.new_message()
+        now = arrow.utcnow()
+
+        response.id = request.id
+        response.timestamp = now.timestamp
+        
+        if request.sender in self.workers:
+            del self.workers[request.sender]
+            response.type = 'ack'
+        else:
+            response.type = 'error'
+            response.message = messages['NOT_REGISTERED'].format(request.sender)
+
+
+        return response
 
     def _handle_heartbeat(self):
         pass
