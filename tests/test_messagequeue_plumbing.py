@@ -7,6 +7,7 @@ import zmq
 from context import messagequeue
 from tornado.ioloop import IOLoop
 import capnp
+import asyncio
 capnp.remove_import_hook()
 
 CWD = os.path.dirname(__file__)
@@ -110,8 +111,6 @@ def test_unregister_after_register(csaopt_server, csaopt_client):
         response = ioloop.run_sync(
             lambda: join_and_leave(join, leave))
 
-        print(str(type(leave)) + '=request, ' + str(type(response)) + '=response')
-
         response = plumbing_capnp.Plumbing.from_bytes_packed(response[0])
         assert response.type == 'ack'
         assert response.id == '1238'
@@ -136,15 +135,79 @@ def test_unregister_without_register(csaopt_server, csaopt_client):
         assert message.sender in str(message.message)
         assert 'not previously registered' in str(message.message)
 
-# def TestLeaveAfterJoin():
-#     """A worker wants to leave after it joined"""
-#     pass
+
+def test_hearbeat(csaopt_server, csaopt_client):
+    """A worker wants to register with the messagequeue"""
+    with csaopt_server:
+        join = plumbing_capnp.Plumbing.new_message(
+            id='1234',
+            sender='worker9',
+            timestamp=arrow.utcnow().timestamp,
+            type='register'
+        )
+
+        heartbeat = plumbing_capnp.Plumbing.new_message(
+            sender='worker9',
+            type='heartbeat'
+        )
+
+        async def join_and_heartbeat(joinmessage, heartbeatmessage):
+            await csaopt_client.send_request([joinmessage.to_bytes_packed()])
+            return await csaopt_client.send_request([heartbeatmessage.to_bytes_packed()])
+
+        ioloop = IOLoop.current()
+        response = ioloop.run_sync(
+            lambda: join_and_heartbeat(join, heartbeat))
+
+        message = plumbing_capnp.Plumbing.from_bytes_packed(response[0])
+        assert message.type == 'ack'
 
 
-# def TestDoubleJoin():
-#     pass
+def test_sad_heartbeat(csaopt_server, csaopt_client):
+    """A worker wants to register with the messagequeue"""
+    with csaopt_server:
+        message = plumbing_capnp.Plumbing.new_message(
+            id='12342',
+            sender='worker1',
+            timestamp=arrow.utcnow().timestamp,
+            type='heartbeat'
+        )
+
+        ioloop = IOLoop.current()
+        response = ioloop.run_sync(
+            lambda: csaopt_client.send_request([message.to_bytes_packed()]))
+
+        message = plumbing_capnp.Plumbing.from_bytes_packed(response[0])
+        assert message.type == 'error'
+        assert 'not known' in str(message.message)
 
 
-# def TestLeaveWithoutJoin():
-#     """A worker tries to leave before it joined"""
-#     pass
+@pytest.mark.timeout(10)
+def test_timeout(csaopt_server, csaopt_client):
+    """A worker wants to send a heartbeat, but it already timed out"""
+    with csaopt_server:
+        csaopt_server.timeout = 1.0
+
+        join = plumbing_capnp.Plumbing.new_message(
+            id='1234',
+            sender='worker7',
+            timestamp=arrow.utcnow().timestamp,
+            type='register'
+        )
+
+        heartbeat = plumbing_capnp.Plumbing.new_message(
+            sender='worker7',
+            type='heartbeat'
+        )
+
+        async def join_and_heartbeat(joinmessage, heartbeatmessage):
+            await csaopt_client.send_request([joinmessage.to_bytes_packed()])
+            await asyncio.sleep(1.5)
+            return await csaopt_client.send_request([heartbeatmessage.to_bytes_packed()])
+
+        ioloop = IOLoop.current()
+        response = ioloop.run_sync(lambda: join_and_heartbeat(join, heartbeat))
+
+        message = plumbing_capnp.Plumbing.from_bytes_packed(response[0])
+        assert message.type == 'error'
+        assert 'not known' in str(message.message)
