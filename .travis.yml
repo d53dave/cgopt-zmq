@@ -12,7 +12,7 @@ before_script:
   - pipenv install --dev
   - sh fix_pyzmq.sh
 
-script: pipenv run py.test --cov=messagequeue tests
+script: pipenv run py.test --cov=messagequeue -v tests
 
 after_success:
     - if [[ $TRAVIS_PYTHON_VERSION == 3.5* ]]; then
