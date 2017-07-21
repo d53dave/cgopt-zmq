@@ -45,7 +45,7 @@ class RepReqServer:
         while self.run:
             try:
                 self.workers = self._filter_worker_timeouts(self.workers, self.timeout)
-                
+
                 packed_bytes = await asyncio.wait_for(self.plumbingsocket.recv_multipart(), timeout=0.5)
                 logger.debug('Received packed bytes with length {}'.format(len(packed_bytes)))
                 message = plumbing_capnp.Plumbing.from_bytes_packed(packed_bytes[0])
@@ -60,7 +60,7 @@ class RepReqServer:
                     response = self._handle_heartbeat(message)
                 else:
                     raise NotImplementedError
-                
+
                 response_bytes = response.to_bytes_packed()
 
                 logger.debug('Sending response {} with length {}'.format(response, len(response_bytes)))
@@ -80,7 +80,7 @@ class RepReqServer:
             greeting = await asyncio.wait_for(self.tidingsocket.recv_multipart(), timeout=0.5)
             print('Received' + str(greeting))
             await self.tidingsocket.send_multipart([b"ACK"], flags=zmq.NOBLOCK)
-        
+
         self.tidingsocket.close(linger=0.0)
 
     def _handle_worker_register(self, request):
@@ -96,7 +96,7 @@ class RepReqServer:
         else:
             self.workers[request.sender] = now
             response.type = 'ack'
-        
+
         return response
 
     def _handle_worker_unregister(self, request):
@@ -105,7 +105,7 @@ class RepReqServer:
 
         response.id = request.id
         response.timestamp = now.timestamp
-        
+
         if request.sender in self.workers:
             del self.workers[request.sender]
             response.type = 'ack'
@@ -121,7 +121,7 @@ class RepReqServer:
 
         response.id = request.id
         response.timestamp = now.timestamp
-        
+
         if request.sender in self.workers:
             self.workers[request.sender] = now
             response.type = 'ack'
@@ -145,7 +145,7 @@ class RepReqServer:
                 alive[worker] = lastHeartbeat
 
         return alive
-        
+
     def stop(self):
         self.run = False
 
