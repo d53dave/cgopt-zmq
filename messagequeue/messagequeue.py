@@ -7,6 +7,8 @@ from .strings import messages
 from tornado.ioloop import IOLoop
 from tornado.platform.asyncio import AsyncIOMainLoop
 import capnp
+import time
+from .stats import Stats
 
 from typing import Dict, Any
 
@@ -32,11 +34,12 @@ class RepReqServer:
         self.plumbingsocket = None
         self.tidingsocket = None
         self.timeout = timeout
-
+        self.stats = Stats()
         self.workers = {}
 
         ioloop.spawn_callback(self._tidings_repreq_loop)
         ioloop.spawn_callback(self._plumbing_repreq_loop)
+        ioloop.spawn_callback(self._stats_loop)
 
     async def _plumbing_repreq_loop(self):
         self.plumbingsocket = self.ctx.socket(zmq.REP)
@@ -44,6 +47,7 @@ class RepReqServer:
         self.plumbingsocket.bind('tcp://*:' + str(self.plumbing_port))
         while self.run:
             try:
+                start_time = time.time()
                 self.workers = self._filter_worker_timeouts(self.workers, self.timeout)
 
                 packed_bytes = await asyncio.wait_for(self.plumbingsocket.recv_multipart(), timeout=0.5)
@@ -58,14 +62,17 @@ class RepReqServer:
                     response = self._handle_worker_unregister(message)
                 elif message.type == 'heartbeat':
                     response = self._handle_heartbeat(message)
+                elif message.type == 'stats':
+                    response = self._handle_stats(message)
                 else:
                     raise NotImplementedError
 
                 response_bytes = response.to_bytes_packed()
 
                 logger.debug('Sending response {} with length {}'.format(response, len(response_bytes)))
+                
                 await self.plumbingsocket.send_multipart([response_bytes], flags=zmq.NOBLOCK)
-
+                self.stats.add_response_time(time.time() - start_time)
             except asyncio.TimeoutError:
                 logger.info('Timeout')
                 continue
@@ -82,6 +89,11 @@ class RepReqServer:
             await self.tidingsocket.send_multipart([b"ACK"], flags=zmq.NOBLOCK)
 
         self.tidingsocket.close(linger=0.0)
+
+    async def _stats_loop(self):
+        while self.run:
+            self.stats.update()
+            asyncio.sleep(2.0)
 
     def _handle_worker_register(self, request):
         response = plumbing_capnp.Plumbing.new_message()
