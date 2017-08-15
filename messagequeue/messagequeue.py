@@ -70,7 +70,7 @@ class RepReqServer:
                 response_bytes = response.to_bytes_packed()
 
                 logger.debug('Sending response {} with length {}'.format(response, len(response_bytes)))
-                
+
                 await self.plumbingsocket.send_multipart([response_bytes], flags=zmq.NOBLOCK)
                 self.stats.add_response_time(time.time() - start_time)
             except asyncio.TimeoutError:
