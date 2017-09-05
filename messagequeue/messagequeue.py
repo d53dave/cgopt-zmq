@@ -1,13 +1,15 @@
 import os
+import time
 import asyncio
 import zmq.asyncio
 import logging
+
 import arrow
-from .strings import messages
+import capnp
 from tornado.ioloop import IOLoop
 from tornado.platform.asyncio import AsyncIOMainLoop
-import capnp
-import time
+
+from .strings import messages
 from .stats import Stats
 
 from typing import Dict, Any
@@ -155,6 +157,8 @@ class RepReqServer:
         for worker, lastHeartbeat in workers.items():
             if lastHeartbeat >= timeout_threshold:
                 alive[worker] = lastHeartbeat
+            else:
+                logger.warn('Worker {} has timed out'.format(worker))
 
         return alive
 
