@@ -1,11 +1,10 @@
-language: python
-python:
-    - "3.5"
-    - "3.6"
-    # - "3.7dev" # fails on travis for now
+language: bash
 
 dist: trusty
 sudo: required
+
+services:
+  - docker
 
 before_script:
   - pip install pipenv
