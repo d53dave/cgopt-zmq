@@ -1,5 +1,7 @@
 FROM java:openjdk-8-jre
 
+MAINTAINER d53dave "https://github.com/d53dave"
+
 ENV DEBIAN_FRONTEND noninteractive
 ENV SCALA_VERSION 2.12
 ENV KAFKA_VERSION 1.0.0
