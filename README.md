@@ -1,6 +1,9 @@
 # csaopt-kafka [![Build Status](https://travis-ci.org/d53dave/csaopt-zmq.svg?branch=master)](https://travis-ci.org/d53dave/csaopt-zmq) [![Coverage Status](https://coveralls.io/repos/github/d53dave/csaopt-zmq/badge.svg?branch=master)](https://coveralls.io/github/d53dave/csaopt-zmq?branch=master)
 [![FOSSA Status](https://app.fossa.io/api/projects/git%2Bgithub.com%2Fd53dave%2Fcsaopt-kafka.svg?type=shield)](https://app.fossa.io/projects/git%2Bgithub.com%2Fd53dave%2Fcsaopt-kafka?ref=badge_shield)
 
+# THIS PROJECT HAS BEEN SUNSET IN FAVOR OF [WURSTMEISTER/KAFKA](https://hub.docker.com/r/wurstmeister/kafka). REST IN PIECE.
+
+
 This is the messagequeue that CSAOpt uses to communicate between the client and worker nodes. More
 speficically, this repo hosts the Dockerfile for Kafka and Zookeeper (inspired by 
 [spotify/kafka](https://github.com/spotify/docker-kafka)).
